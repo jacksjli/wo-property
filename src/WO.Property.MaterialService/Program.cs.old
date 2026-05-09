@@ -1,0 +1,530 @@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using BCrypt.Net;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// 添加服务
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+// 添加数据库上下文
+builder.Services.AddDbContext<MaterialDbContext>(options =>
+    options.UseSqlite("Data Source=property_materials.db"));
+
+// 添加JWT认证
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var secretKey = jwtSettings["SecretKey"] ?? "YourSuperSecretKeyForJWTTokenGeneration12345";
+var issuer = jwtSettings["Issuer"] ?? "WOPropertyMaterialService";
+var audience = jwtSettings["Audience"] ?? "WOPropertyClients";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = issuer,
+        ValidAudience = audience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+
+// 配置中间件
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseCors("AllowAll");
+app.UseAuthentication();
+app.UseAuthorization();
+
+// 健康检查端点
+app.MapGet("/health", () =>
+{
+    return Results.Json(new
+    {
+        status = "healthy",
+        service = "WO物料管理服务",
+        version = "1.0.0",
+        timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+        features = new[] { "物料分类管理", "库存管理", "采购管理", "领用管理", "库存预警" }
+    });
+});
+
+// 物料分类管理API
+app.MapGet("/api/material-categories", async (MaterialDbContext db) =>
+{
+    var categories = await db.MaterialCategories.ToListAsync();
+    return Results.Ok(new { categories });
+});
+
+app.MapPost("/api/material-categories", async (MaterialDbContext db, CreateMaterialCategoryRequest request) =>
+{
+    var category = new MaterialCategory
+    {
+        Name = request.Name,
+        Description = request.Description,
+        ParentCategoryId = request.ParentCategoryId
+    };
+    
+    db.MaterialCategories.Add(category);
+    await db.SaveChangesAsync();
+    
+    return Results.Created($"/api/material-categories/{category.Id}", new { category });
+});
+
+// 物料管理API
+app.MapGet("/api/materials", async (MaterialDbContext db, [FromQuery] int? categoryId, [FromQuery] string? search) =>
+{
+    var query = db.Materials.AsQueryable();
+    
+    if (categoryId.HasValue)
+    {
+        query = query.Where(m => m.CategoryId == categoryId.Value);
+    }
+    
+    if (!string.IsNullOrEmpty(search))
+    {
+        query = query.Where(m => m.Name.Contains(search) || m.Code.Contains(search) || m.Description.Contains(search));
+    }
+    
+    var materials = await query.ToListAsync();
+    return Results.Ok(new { materials });
+});
+
+app.MapGet("/api/materials/{id}", async (MaterialDbContext db, int id) =>
+{
+    var material = await db.Materials.FindAsync(id);
+    if (material == null)
+        return Results.NotFound(new { message = "物料不存在" });
+    
+    return Results.Ok(new { material });
+});
+
+app.MapPost("/api/materials", async (MaterialDbContext db, CreateMaterialRequest request) =>
+{
+    var material = new Material
+    {
+        Code = request.Code,
+        Name = request.Name,
+        Description = request.Description,
+        CategoryId = request.CategoryId,
+        Unit = request.Unit,
+        UnitPrice = request.UnitPrice,
+        SafetyStock = request.SafetyStock,
+        MaxStock = request.MaxStock,
+        CurrentStock = 0,
+        Location = request.Location,
+        Supplier = request.Supplier,
+        Notes = request.Notes
+    };
+    
+    db.Materials.Add(material);
+    await db.SaveChangesAsync();
+    
+    return Results.Created($"/api/materials/{material.Id}", new { material });
+});
+
+app.MapPut("/api/materials/{id}", async (MaterialDbContext db, int id, UpdateMaterialRequest request) =>
+{
+    var material = await db.Materials.FindAsync(id);
+    if (material == null)
+        return Results.NotFound(new { message = "物料不存在" });
+    
+    material.Name = request.Name;
+    material.Description = request.Description;
+    material.CategoryId = request.CategoryId;
+    material.Unit = request.Unit;
+    material.UnitPrice = request.UnitPrice;
+    material.SafetyStock = request.SafetyStock;
+    material.MaxStock = request.MaxStock;
+    material.Location = request.Location;
+    material.Supplier = request.Supplier;
+    material.Notes = request.Notes;
+    
+    await db.SaveChangesAsync();
+    
+    return Results.Ok(new { material });
+});
+
+// 库存管理API
+app.MapPost("/api/materials/{id}/stock-in", async (MaterialDbContext db, int id, StockInRequest request) =>
+{
+    var material = await db.Materials.FindAsync(id);
+    if (material == null)
+        return Results.NotFound(new { message = "物料不存在" });
+    
+    material.CurrentStock += request.Quantity;
+    
+    var transaction = new StockTransaction
+    {
+        MaterialId = id,
+        TransactionType = "入库",
+        Quantity = request.Quantity,
+        UnitPrice = request.UnitPrice ?? material.UnitPrice,
+        TotalAmount = request.Quantity * (request.UnitPrice ?? material.UnitPrice),
+        ReferenceNumber = request.ReferenceNumber,
+        Notes = request.Notes,
+        CreatedBy = request.CreatedBy,
+        CreatedAt = DateTime.UtcNow
+    };
+    
+    db.StockTransactions.Add(transaction);
+    await db.SaveChangesAsync();
+    
+    return Results.Ok(new { material, transaction });
+});
+
+app.MapPost("/api/materials/{id}/stock-out", async (MaterialDbContext db, int id, StockOutRequest request) =>
+{
+    var material = await db.Materials.FindAsync(id);
+    if (material == null)
+        return Results.NotFound(new { message = "物料不存在" });
+    
+    if (material.CurrentStock < request.Quantity)
+        return Results.BadRequest(new { message = "库存不足" });
+    
+    material.CurrentStock -= request.Quantity;
+    
+    var transaction = new StockTransaction
+    {
+        MaterialId = id,
+        TransactionType = "出库",
+        Quantity = request.Quantity,
+        UnitPrice = request.UnitPrice ?? material.UnitPrice,
+        TotalAmount = request.Quantity * (request.UnitPrice ?? material.UnitPrice),
+        ReferenceNumber = request.ReferenceNumber,
+        TicketId = request.TicketId,
+        Notes = request.Notes,
+        CreatedBy = request.CreatedBy,
+        CreatedAt = DateTime.UtcNow
+    };
+    
+    db.StockTransactions.Add(transaction);
+    await db.SaveChangesAsync();
+    
+    return Results.Ok(new { material, transaction });
+});
+
+// 采购管理API
+app.MapGet("/api/purchase-orders", async (MaterialDbContext db) =>
+{
+    var orders = await db.PurchaseOrders
+        .Include(o => o.Items)
+        .ToListAsync();
+    
+    return Results.Ok(new { orders });
+});
+
+app.MapPost("/api/purchase-orders", async (MaterialDbContext db, CreatePurchaseOrderRequest request) =>
+{
+    var order = new PurchaseOrder
+    {
+        OrderNumber = $"PO-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(1000, 9999)}",
+        Supplier = request.Supplier,
+        Status = "待审批",
+        TotalAmount = 0,
+        CreatedBy = request.CreatedBy,
+        CreatedAt = DateTime.UtcNow
+    };
+    
+    db.PurchaseOrders.Add(order);
+    await db.SaveChangesAsync();
+    
+    return Results.Created($"/api/purchase-orders/{order.Id}", new { order });
+});
+
+// 库存统计API
+app.MapGet("/api/materials/statistics", async (MaterialDbContext db) =>
+{
+    var totalMaterials = await db.Materials.CountAsync();
+    var lowStockMaterials = await db.Materials
+        .Where(m => m.CurrentStock <= m.SafetyStock)
+        .CountAsync();
+    var outOfStockMaterials = await db.Materials
+        .Where(m => m.CurrentStock == 0)
+        .CountAsync();
+    var totalStockValue = await db.Materials
+        .SumAsync(m => m.CurrentStock * m.UnitPrice);
+    
+    var recentTransactions = await db.StockTransactions
+        .OrderByDescending(t => t.CreatedAt)
+        .Take(10)
+        .ToListAsync();
+    
+    return Results.Ok(new
+    {
+        statistics = new
+        {
+            totalMaterials,
+            lowStockMaterials,
+            outOfStockMaterials,
+            totalStockValue
+        },
+        recentTransactions
+    });
+});
+
+// 初始化数据库
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<MaterialDbContext>();
+    dbContext.Database.EnsureCreated();
+    
+    // 添加初始数据
+    if (!dbContext.MaterialCategories.Any())
+    {
+        dbContext.MaterialCategories.AddRange(
+            new MaterialCategory { Name = "电气材料", Description = "电线、开关、插座等" },
+            new MaterialCategory { Name = "管道材料", Description = "水管、阀门、接头等" },
+            new MaterialCategory { Name = "工具设备", Description = "维修工具、测量仪器等" },
+            new MaterialCategory { Name = "清洁用品", Description = "清洁剂、拖把、垃圾袋等" },
+            new MaterialCategory { Name = "办公用品", Description = "纸张、笔、文件夹等" }
+        );
+        await dbContext.SaveChangesAsync();
+    }
+    
+    if (!dbContext.Materials.Any())
+    {
+        var categories = await dbContext.MaterialCategories.ToListAsync();
+        
+        dbContext.Materials.AddRange(
+            new Material
+            {
+                Code = "ELEC-001",
+                Name = "电线（2.5平方）",
+                Description = "铜芯电线，2.5平方毫米",
+                CategoryId = categories[0].Id,
+                Unit = "卷",
+                UnitPrice = 150.00m,
+                SafetyStock = 10,
+                MaxStock = 100,
+                CurrentStock = 25,
+                Location = "A区-1排-3层",
+                Supplier = "华东电缆厂"
+            },
+            new Material
+            {
+                Code = "PIPE-001",
+                Name = "PVC水管（25mm）",
+                Description = "PVC材质，直径25毫米",
+                CategoryId = categories[1].Id,
+                Unit = "米",
+                UnitPrice = 8.50m,
+                SafetyStock = 50,
+                MaxStock = 500,
+                CurrentStock = 120,
+                Location = "B区-2排-1层",
+                Supplier = "华南管业"
+            },
+            new Material
+            {
+                Code = "TOOL-001",
+                Name = "多功能工具箱",
+                Description = "包含常用维修工具",
+                CategoryId = categories[2].Id,
+                Unit = "套",
+                UnitPrice = 280.00m,
+                SafetyStock = 5,
+                MaxStock = 20,
+                CurrentStock = 8,
+                Location = "工具室-1号柜",
+                Supplier = "工具之家"
+            }
+        );
+        await dbContext.SaveChangesAsync();
+    }
+}
+
+app.Run("http://localhost:5004");
+
+// 数据库上下文
+public class MaterialDbContext : DbContext
+{
+    public MaterialDbContext(DbContextOptions<MaterialDbContext> options) : base(options) { }
+    
+    public DbSet<MaterialCategory> MaterialCategories { get; set; }
+    public DbSet<Material> Materials { get; set; }
+    public DbSet<StockTransaction> StockTransactions { get; set; }
+    public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
+    public DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
+}
+
+// 实体类
+public class MaterialCategory
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int? ParentCategoryId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class Material
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int CategoryId { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public decimal UnitPrice { get; set; }
+    public int SafetyStock { get; set; }
+    public int MaxStock { get; set; }
+    public int CurrentStock { get; set; }
+    public string? Location { get; set; }
+    public string? Supplier { get; set; }
+    public string? Notes { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class StockTransaction
+{
+    public int Id { get; set; }
+    public int MaterialId { get; set; }
+    public string TransactionType { get; set; } = string.Empty; // 入库/出库
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal TotalAmount { get; set; }
+    public string? ReferenceNumber { get; set; }
+    public int? TicketId { get; set; } // 关联工单
+    public string? Notes { get; set; }
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class PurchaseOrder
+{
+    public int Id { get; set; }
+    public string OrderNumber { get; set; } = string.Empty;
+    public string Supplier { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty; // 待审批/已批准/已发货/已完成/已取消
+    public decimal TotalAmount { get; set; }
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ApprovedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    
+    public List<PurchaseOrderItem> Items { get; set; } = new();
+}
+
+public class PurchaseOrderItem
+{
+    public int Id { get; set; }
+    public int PurchaseOrderId { get; set; }
+    public int MaterialId { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal TotalAmount { get; set; }
+    public string? Notes { get; set; }
+}
+
+// 请求模型
+public class CreateMaterialCategoryRequest
+{
+    [Required]
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int? ParentCategoryId { get; set; }
+}
+
+public class CreateMaterialRequest
+{
+    [Required]
+    public string Code { get; set; } = string.Empty;
+    [Required]
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    [Required]
+    public int CategoryId { get; set; }
+    [Required]
+    public string Unit { get; set; } = string.Empty;
+    [Required]
+    public decimal UnitPrice { get; set; }
+    public int SafetyStock { get; set; } = 0;
+    public int MaxStock { get; set; } = 1000;
+    public string? Location { get; set; }
+    public string? Supplier { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class UpdateMaterialRequest
+{
+    [Required]
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    [Required]
+    public int CategoryId { get; set; }
+    [Required]
+    public string Unit { get; set; } = string.Empty;
+    [Required]
+    public decimal UnitPrice { get; set; }
+    public int SafetyStock { get; set; }
+    public int MaxStock { get; set; }
+    public string? Location { get; set; }
+    public string? Supplier { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class StockInRequest
+{
+    [Required]
+    public int Quantity { get; set; }
+    public decimal? UnitPrice { get; set; }
+    public string? ReferenceNumber { get; set; }
+    public string? Notes { get; set; }
+    [Required]
+    public int CreatedBy { get; set; }
+}
+
+public class StockOutRequest
+{
+    [Required]
+    public int Quantity { get; set; }
+    public decimal? UnitPrice { get; set; }
+    public string? ReferenceNumber { get; set; }
+    public int? TicketId { get; set; }
+    public string? Notes { get; set; }
+    [Required]
+    public int CreatedBy { get; set; }
+}
+
+public class CreatePurchaseOrderRequest
+{
+    [Required]
+    public string Supplier { get; set; } = string.Empty;
+    [Required]
+    public int CreatedBy { get; set; }
+}

@@ -1,0 +1,174 @@
+version: '3.8'
+
+# ============================================================
+# WO-Property ELK Stack Configuration
+# Architecture: Filebeat → Logstash → Elasticsearch → Kibana
+# ============================================================
+
+services:
+  # ------------------- Elasticsearch -------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: wo-elasticsearch
+    environment:
+      - node.name=wo-elasticsearch
+      - cluster.name=wo-property-cluster
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - action.auto_create_index=true
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=85%
+      - cluster.routing.allocation.disk.watermark.high=90%
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - elk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ------------------- Logstash -------------------
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.17.0
+    container_name: wo-logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ../logs:/var/log/woproperty:ro
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xms512m -Xmx512m"
+      - XPACK_MONITORING_ENABLED=false
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9600/_node/stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ------------------- Kibana -------------------
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.0
+    container_name: wo-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://wo-elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+      - SERVER_NAME=wo-property-kibana
+      - SERVER_HOST=0.0.0.0
+      - LOGGING_dest=stdout
+      - TELEMETRY.enabled=false
+      - XPACK_USAGE_DATA_ENABLED=false
+    ports:
+      - "5601:5601"
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ------------------- Filebeat (per service) -------------------
+  # 每個 .NET 服务对应一个 Filebeat 实例，收集其日志文件
+  filebeat-apigateway:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    container_name: wo-filebeat-apigateway
+    user: root
+    volumes:
+      - ./filebeat/apigateway.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ../../logs:/var/log/woproperty:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      - logstash
+
+  filebeat-personservice:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    container_name: wo-filebeat-personservice
+    user: root
+    volumes:
+      - ./filebeat/personservice.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ../../logs:/var/log/woproperty:ro
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      - logstash
+
+  filebeat-ticketservice:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    container_name: wo-filebeat-ticketservice
+    user: root
+    volumes:
+      - ./filebeat/ticketservice.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ../../logs:/var/log/woproperty:ro
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      - logstash
+
+  filebeat-dispatchservice:
+    image: docker.elastic.co/beats/filebeat:8.17.0
+    container_name: wo-filebeat-dispatchservice
+    user: root
+    volumes:
+      - ./filebeat/dispatchservice.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ../../logs:/var/log/woproperty:ro
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      - logstash
+
+  # ------------------- ElastAlert (可选 - 日志告警) -------------------
+  elastalert:
+    image: bitsensor/elastalert:3.1.0
+    container_name: wo-elastalert
+    volumes:
+      - ./elastalert/config.yaml:/opt/elastalert/config.yaml:ro
+      - ./elastalert/rules:/opt/elastalert/rules:ro
+    networks:
+      - elk-network
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+
+# ============================================================
+# 卷 & 网络
+# ============================================================
+volumes:
+  elasticsearch_data:
+    driver: local
+
+networks:
+  elk-network:
+    driver: bridge

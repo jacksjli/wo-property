@@ -1,0 +1,211 @@
+<template>
+  <div class="{module}-page">
+    <el-card>
+      <template #header>
+        <div class="header">
+          <span>{ModuleNameCn}</span>
+          <div class="header-actions">
+            <el-button @click="openFieldConfig">
+              <el-icon><Setting /></el-icon> 配置字段
+            </el-button>
+            <el-button @click="handleRefresh">
+              <el-icon><Refresh /></el-icon> 刷新
+            </el-button>
+            <el-button type="primary" @click="handleAdd">
+              <el-icon><Plus /></el-icon> 新增
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <!-- 筛选工具栏 -->
+      <div class="filter-toolbar">
+        <el-input v-model="filterKeyword" placeholder="关键词搜索" clearable style="width: 200px;" />
+        <el-select v-model="filterStatus" placeholder="状态" clearable style="width: 120px;">
+          <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <el-button @click="handleReset">重置</el-button>
+      </div>
+
+      <!-- 数据列表 -->
+      <el-table :data="filteredList" stripe v-loading="loading">
+        <!-- TODO: 根据实际字段调整列 -->
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="name" label="名称" min-width="150" />
+        <el-table-column prop="status" label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="创建时间" width="160" />
+        <el-table-column label="操作" width="150" fixed="right" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 新增/编辑对话框 -->
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
+      <el-form label-width="100px">
+        <!-- TODO: 根据实际字段调整表单 -->
+        <el-form-item label="名称" required>
+          <el-input v-model="form.name" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="form.status" style="width: 100%">
+            <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmit">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 字段配置对话框 -->
+    <FieldConfigDialog ref="fieldDialogRef" module="{module}" :refresh-key="refreshKey" @updated="loadData" />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Edit, Delete, Refresh, Setting } from '@element-plus/icons-vue'
+import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
+import { usePermission } from '@/composables/usePermission'
+import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
+import { masterApi } from '@/api/http'
+
+const { verifyAdminPassword } = usePermission()
+const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
+
+const get{ModuleNameCamel}Fields = () => getActiveFields('{module}')
+
+const openFieldConfig = async () => {
+  const verified = await verifyAdminPassword()
+  if (verified) {
+    fieldDialogRef.value?.open(get{ModuleNameCamel}Fields())
+  }
+}
+
+const refreshKey = ref(0)
+const refreshFields = () => { refreshKey.value++ }
+
+const loading = ref(false)
+const recordList = ref<any[]>([])
+const total = ref(0)
+
+const filterKeyword = ref('')
+const filterStatus = ref('')
+const dialogVisible = ref(false)
+const dialogTitle = ref('新增')
+const editingId = ref<number | null>(null)
+
+const form = ref({ name: '', status: 'active' })
+
+const statusOptions = [
+  { value: 'active', label: '启用' },
+  { value: 'inactive', label: '停用' }
+]
+
+const filteredList = computed(() => {
+  let result = recordList.value
+  if (filterKeyword.value) {
+    result = result.filter((r: any) => r.name?.includes(filterKeyword.value))
+  }
+  if (filterStatus.value) {
+    result = result.filter((r: any) => r.status === filterStatus.value)
+  }
+  return result
+})
+
+const getStatusType = (status: string) => {
+  const map: Record<string, string> = { active: 'success', inactive: 'info' }
+  return map[status] || 'info'
+}
+
+const getStatusLabel = (status: string) => {
+  const map: Record<string, string> = { active: '启用', inactive: '停用' }
+  return map[status] || status
+}
+
+const loadData = async () => {
+  loading.value = true
+  try {
+    const params: any = { page: 1, pageSize: 100 }
+    if (filterKeyword.value) params.keyword = filterKeyword.value
+    if (filterStatus.value) params.status = filterStatus.value
+    const res: any = await masterApi.get('/{module-records}', { params })
+    recordList.value = res.data || []
+  } catch (e: any) {
+    console.error('Load data error:', e)
+    ElMessage.error('加载失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => loadData())
+
+const handleAdd = () => {
+  editingId.value = null
+  dialogTitle.value = '新增'
+  form.value = { name: '', status: 'active' }
+  dialogVisible.value = true
+}
+
+const handleEdit = (row: any) => {
+  editingId.value = row.id
+  dialogTitle.value = '编辑'
+  form.value = { ...row }
+  dialogVisible.value = true
+}
+
+const handleSubmit = async () => {
+  try {
+    if (editingId.value) {
+      await masterApi.put(`/{module-records}/${editingId.value}`, form.value)
+      ElMessage.success('更新成功')
+    } else {
+      await masterApi.post('/{module-records}', form.value)
+      ElMessage.success('添加成功')
+    }
+    await loadData()
+    dialogVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
+  }
+}
+
+const handleDelete = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定删除这条记录吗？`, '提示', { type: 'warning' })
+    await masterApi.delete(`/{module-records}/${row.id}`)
+    ElMessage.success('删除成功')
+    await loadData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+  }
+}
+
+const handleRefresh = async () => {
+  refreshFields()
+  await loadData()
+}
+
+const handleReset = () => {
+  filterKeyword.value = ''
+  filterStatus.value = ''
+}
+</script>
+
+<style scoped>
+.{module}-page { padding: 0; }
+.header { display: flex; justify-content: space-between; align-items: center; }
+.header-actions { display: flex; gap: 8px; }
+.filter-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+</style>

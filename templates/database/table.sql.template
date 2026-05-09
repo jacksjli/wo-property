@@ -1,0 +1,17 @@
+-- WO-Property 标准表结构模板
+-- 使用说明：将 {module_records} 替换为实际表名，如 cleaning_records, finance_records
+
+CREATE TABLE IF NOT EXISTS `{module_records}` (
+    `Id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `Name` VARCHAR(100) NOT NULL COMMENT '名称',
+    `Status` VARCHAR(20) DEFAULT 'active' COMMENT '状态',
+    `CreatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `UpdatedAt` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_status` (`Status`),
+    INDEX `idx_created` (`CreatedAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模块记录表';
+
+-- 种子数据示例
+INSERT INTO `{module_records}` (`Name`, `Status`) VALUES
+('示例记录1', 'active'),
+('示例记录2', 'active');

@@ -1,0 +1,323 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: '跳过测试 (true/false)'
+        required: false
+        default: 'false'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/woproperty
+  NODE_VERSION: '20'
+  DOTNET_VERSION: '8.0'
+
+jobs:
+  # =========================================================
+  # Job 1: 后端 .NET 构建 + 测试
+  # =========================================================
+  backend-build:
+    name: 🟦 .NET Build & Test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - WO.Property.GatewayService
+          - WO.Property.AuthService
+          - WO.Property.MasterDataService
+          - WO.Property.PersonService
+          - WO.Property.TicketService
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: wo_property_test
+          MYSQL_USER: woproperty
+          MYSQL_PASSWORD: WOProperty2026!
+        options: >-
+          --health-cmd "mysqladmin ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 3306:3306
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ matrix.service }}/${{ matrix.service }}.csproj
+        working-directory: ./src
+
+      - name: Build
+        run: dotnet build ${{ matrix.service }}/${{ matrix.service }}.csproj -c Release --no-restore
+        working-directory: ./src
+
+      - name: Test
+        if: github.event.inputs.skip_tests != 'true'
+        run: |
+          dotnet test ${{ matrix.service }}/${{ matrix.service }}.csproj \
+            -c Release \
+            --no-build \
+            --logger "trx;LogFileName=results.trx" \
+            --results-directory ./TestResults \
+            /p:CollectCoverage=true \
+            /p:ExcludeByFile="**/Migrations/**/*.cs" \
+            /p:Threshold=60
+        working-directory: ./src
+        env:
+          DB_CONNECTION_STRING: Server=127.0.0.1;Port=3306;Database=wo_property_test;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=false;
+
+      - name: Upload test results
+        if: github.event.inputs.skip_tests != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.service }}
+          path: src/TestResults/*.trx
+          retention-days: 7
+
+      - name: Upload coverage reports
+        if: github.event.inputs.skip_tests != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: src/**/coverage*.xml
+          retention-days: 7
+        continue-on-error: true
+
+  # =========================================================
+  # Job 2: 前端 Vue3 构建
+  # =========================================================
+  frontend-build:
+    name: 🟩 Vue3 Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/admin-portal/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./src/admin-portal
+
+      - name: Type check
+        if: github.event.inputs.skip_tests != 'true'
+        run: npm run type-check
+        working-directory: ./src/admin-portal
+
+      - name: Lint
+        if: github.event.inputs.skip_tests != 'true'
+        run: npm run lint
+        working-directory: ./src/admin-portal
+
+      - name: Build
+        run: npm run build
+        working-directory: ./src/admin-portal
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/admin-portal/dist
+          retention-days: 7
+
+  # =========================================================
+  # Job 3: Docker 镜像构建 + 推送（仅 main / develop）
+  # =========================================================
+  docker-build-and-push:
+    name: 🐳 Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: [backend-build, frontend-build]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare image tags
+        id: prep
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for backend services
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=sha,prefix={{branch}}/
+            type=raw,value=${{ steps.prep.outputs.sha }}
+            type=raw,value=${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+            type=raw,value=latest,enable={{branch == 'main'}}
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/gateway
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/auth-service
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/masterdata-service
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/person-service
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/ticket-service
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/admin-portal/dist
+
+      # ------------------------------------------------------------
+      # 多服务并行构建（使用 matrix strategy 避免重复逻辑）
+      # ------------------------------------------------------------
+      - name: Build & Push backend services
+        run: |
+          SERVICES=("gateway" "auth-service" "masterdata-service" "person-service" "ticket-service")
+          for SVC in "${SERVICES[@]}"; do
+            TAG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${SVC}:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}"
+            case $SVC in
+              gateway) CTX="./src/WO.Property.GatewayService" ;;
+              auth-service) CTX="./src/WO.Property.AuthService" ;;
+              masterdata-service) CTX="./src/WO.Property.MasterDataService" ;;
+              person-service) CTX="./src/WO.Property.PersonService" ;;
+              ticket-service) CTX="./src/WO.Property.TicketService" ;;
+            esac
+            docker build -t "$TAG" -f "$CTX/Dockerfile" "$CTX"
+            docker push "$TAG"
+            echo "✅ Pushed: $TAG"
+          done
+
+      - name: Build & Push frontend
+        run: |
+          TAG="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}"
+          docker build -t "$TAG" -f ./src/admin-portal/Dockerfile ./src/admin-portal
+          docker push "$TAG"
+          echo "✅ Pushed: $TAG"
+
+      - name: Summary comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🐳 CI 结果\n\n**Commit:** \`${{ steps.prep.outputs.sha }}\`\n**Branch:** \`${{ steps.prep.outputs.branch }}\`\n\n**镜像已推送至 GHCR:**\n- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/gateway:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}\`\n- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/auth-service:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}\`\n- \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}\`\n\n等待 CD 流程触发...`
+            })
+
+  # =========================================================
+  # Job 4: 部署到测试环境（仅 develop 分支自动触发）
+  # =========================================================
+  deploy-test:
+    name: 🚀 Deploy to Test Env
+    runs-on: ubuntu-latest
+    needs: docker-build-and-push
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.deploy_test == 'true'
+    environment:
+      name: test
+      url: https://test.wo-property.example.com
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare tags
+        id: prep
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Download docker-compose override for test
+        run: |
+          cat > docker-compose.ci.yml << 'EOF'
+          version: '3.8'
+          services:
+            gateway:
+              image: ghcr.io/${{ github.repository_owner }}/woproperty/gateway:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+              pull_policy: always
+            auth-service:
+              image: ghcr.io/${{ github.repository_owner }}/woproperty/auth-service:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+              pull_policy: always
+            masterdata-service:
+              image: ghcr.io/${{ github.repository_owner }}/woproperty/masterdata-service:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+              pull_policy: always
+            person-service:
+              image: ghcr.io/${{ github.repository_owner }}/woproperty/person-service:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+              pull_policy: always
+            ticket-service:
+              image: ghcr.io/${{ github.repository_owner }}/woproperty/ticket-service:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+              pull_policy: always
+            frontend:
+              image: ghcr.io/${{ github.repository_owner }}/woproperty/frontend:${{ steps.prep.outputs.branch }}-${{ steps.prep.outputs.sha }}
+              pull_policy: always
+          EOF
+
+      - name: Deploy to test server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TEST_SERVER_HOST }}
+          username: ${{ secrets.TEST_SERVER_USER }}
+          key: ${{ secrets.TEST_SERVER_SSH_KEY }}
+          script: |
+            cd /opt/wo-property
+            docker compose pull
+            docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+            echo "✅ Test deployment complete"
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -sf http://${{ secrets.TEST_SERVER_HOST }}/health || exit 1
+          curl -sf http://${{ secrets.TEST_SERVER_HOST }}/api/health || exit 1
+
+      - name: Notify deployment result
+        if: always()
+        run: |
+          STATUS="${{ job.status == 'success' && '✅ 测试环境部署成功' || '❌ 测试环境部署失败' }}"
+          echo "::notice:: $STATUS"

@@ -1,0 +1,77 @@
+@WO.Property.DispatchService_HostAddress = http://localhost:5003
+
+### 健康检查
+GET {{WO.Property.DispatchService_HostAddress}}/health
+Accept: application/json
+
+### 获取所有派单规则
+GET {{WO.Property.DispatchService_HostAddress}}/api/dispatch-rules
+Accept: application/json
+
+### 获取单个派单规则
+GET {{WO.Property.DispatchService_HostAddress}}/api/dispatch-rules/1
+Accept: application/json
+
+### 创建派单规则
+POST {{WO.Property.DispatchService_HostAddress}}/api/dispatch-rules
+Content-Type: application/json
+
+{
+  "ruleNo": "DR-001",
+  "name": "测试规则",
+  "description": "测试派单规则",
+  "type": "ticket_type",
+  "ticketColor": "green",
+  "location": "A栋",
+  "locationType": "exact",
+  "priority": 1,
+  "autoAssign": true,
+  "notifyBackup": true,
+  "allowTransfer": true,
+  "timeoutEscalation": true,
+  "operatorIds": [1, 2],
+  "supervisorId": 3,
+  "managerId": 4,
+  "departmentHeadId": 5,
+  "companyHeadId": 6,
+  "backupIds": [1, 2],
+  "notifyMethods": ["app", "sms"],
+  "status": "draft",
+  "remark": "测试备注"
+}
+
+### 更新派单规则
+PUT {{WO.Property.DispatchService_HostAddress}}/api/dispatch-rules/1
+Content-Type: application/json
+
+{
+  "name": "更新后的规则",
+  "priority": 2
+}
+
+### 删除派单规则
+DELETE {{WO.Property.DispatchService_HostAddress}}/api/dispatch-rules/1
+Accept: application/json
+
+### 获取所有派单任务
+GET {{WO.Property.DispatchService_HostAddress}}/api/dispatch-tasks
+Accept: application/json
+
+### 获取超时规则
+GET {{WO.Property.DispatchService_HostAddress}}/api/timeout-rules
+Accept: application/json
+
+### 更新超时规则
+PUT {{WO.Property.DispatchService_HostAddress}}/api/timeout-rules
+Content-Type: application/json
+
+{
+  "green": {
+    "operator": { "hours": 24, "enabled": true },
+    "supervisor": { "hours": 24, "enabled": true }
+  }
+}
+
+### 获取派单统计
+GET {{WO.Property.DispatchService_HostAddress}}/api/dispatch/stats
+Accept: application/json

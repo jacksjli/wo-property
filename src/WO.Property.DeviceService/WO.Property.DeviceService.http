@@ -1,0 +1,6 @@
+@WO.Property.DeviceService_HostAddress = http://localhost:5093
+
+GET {{WO.Property.DeviceService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,254 @@
+# WO Property Management System - Docker Compose (MySQL + 开发/生产环境)
+services:
+  # ==================== 数据库 ====================
+  mysql:
+    image: mysql:8.0
+    container_name: wo-property-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: wo_property
+      MYSQL_USER: woproperty
+      MYSQL_PASSWORD: WOProperty2026!
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - wo-network
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --max-connections=500
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==================== 后端微服务 ====================
+
+  gateway:
+    build:
+      context: ./src/WO.Property.GatewayService
+      dockerfile: Dockerfile
+    container_name: wo-gateway
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    ports:
+      - "5000:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  auth-service:
+    build:
+      context: ./src/WO.Property.AuthService
+      dockerfile: Dockerfile
+    container_name: wo-auth-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DB_CONNECTION_STRING=Server=mysql;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;Connection Idle Timeout=60;Default Command Timeout=30;
+      - JWT_SECRET_KEY=WO-Property-Management-Unified-Secret-Key-2026-For-All-Services
+      - JWT_ISSUER=wo-property-unified-auth
+      - JWT_AUDIENCE=wo-property-services
+    ports:
+      - "5006:5006"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5006/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  masterdata-service:
+    build:
+      context: ./src/WO.Property.MasterDataService
+      dockerfile: Dockerfile
+    container_name: wo-masterdata-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DB_CONNECTION_STRING=Server=mysql;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;Connection Idle Timeout=60;Default Command Timeout=30;
+      - JWT_SECRET_KEY=WO-Property-Management-Unified-Secret-Key-2026-For-All-Services
+    ports:
+      - "5019:5019"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5019/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  person-service:
+    build:
+      context: ./src/WO.Property.PersonService
+      dockerfile: Dockerfile
+    container_name: wo-person-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DB_CONNECTION_STRING=Server=mysql;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;Connection Idle Timeout=60;Default Command Timeout=30;
+      - JWT_SECRET_KEY=WO-Property-Management-Unified-Secret-Key-2026-For-All-Services
+    ports:
+      - "5018:5018"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5018/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  ticket-service:
+    build:
+      context: ./src/WO.Property.TicketService
+      dockerfile: Dockerfile
+    container_name: wo-ticket-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DB_CONNECTION_STRING=Server=mysql;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;Connection Idle Timeout=60;Default Command Timeout=30;
+      - JWT_SECRET_KEY=WO-Property-Management-Unified-Secret-Key-2026-For-All-Services
+      - JWT_ISSUER=wo-property-unified-auth
+      - JWT_AUDIENCE=wo-property-services
+    ports:
+      - "5002:5002"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5002/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  # ==================== Nginx 反向代理 ====================
+  nginx:
+    image: nginx:alpine
+    container_name: wo-property-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      gateway:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      masterdata-service:
+        condition: service_healthy
+      person-service:
+        condition: service_healthy
+      ticket-service:
+        condition: service_healthy
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ==================== 前端 ====================
+  frontend:
+    build:
+      context: ./src/admin-portal
+      dockerfile: Dockerfile
+    container_name: wo-frontend
+    environment:
+      - VITE_API_BASE_URL=http://nginx/api
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+    networks:
+      - wo-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+# ==================== 网络 & 卷 ====================
+volumes:
+  mysql_data:
+  nginx_logs:
+
+networks:
+  wo-network:
+    driver: bridge

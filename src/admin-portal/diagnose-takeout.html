@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>诊断外卖管理模块</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f2f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
+    h2 { color: #333; margin-top: 0; }
+    .section { margin: 20px 0; padding: 15px; border-radius: 6px; }
+    .ok { background: #f0f9eb; border: 1px solid #b3e19d; }
+    .error { background: #fef0f0; border: 1px solid #fab6b6; }
+    .info { background: #f4f4f5; border: 1px solid #d3d3d3; }
+    .btn { padding: 12px 24px; margin: 8px 4px; cursor: pointer; border: none; border-radius: 4px; font-size: 16px; color: white; }
+    .btn-primary { background: #409eff; }
+    .btn-danger { background: #f56c6c; }
+    .btn-success { background: #67c23a; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 13px; }
+    .log { max-height: 300px; overflow-y: auto; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🔍 外卖管理模块诊断工具</h2>
+    
+    <div id="status" class="section info">正在诊断...</div>
+    
+    <div class="section">
+      <h3>步骤1：诊断 localStorage</h3>
+      <button class="btn btn-primary" onclick="diagnose()">🔍 运行诊断</button>
+    </div>
+    
+    <div class="section">
+      <h3>步骤2：自动修复</h3>
+      <button class="btn btn-success" onclick="fixAndGo()">✅ 修复并跳转</button>
+    </div>
+    
+    <div class="section">
+      <h3>步骤3：完全清除并重置</h3>
+      <button class="btn btn-danger" onclick="reset()">🗑️ 清除所有缓存</button>
+    </div>
+    
+    <div id="result" class="section" style="display:none;">
+      <h3>诊断结果</h3>
+      <pre id="log" class="log"></pre>
+    </div>
+  </div>
+
+  <script>
+    const TAKEOUT_FIELDS = [
+      { id: 1, module: 'takeout', name: '订单编号', key: 'orderNo', type: 'text', defaultValue: '', required: true, status: 'Active', width: 140 },
+      { id: 2, module: 'takeout', name: '餐厅名称', key: 'restaurantName', type: 'text', defaultValue: '', required: true, status: 'Active', width: 120 },
+      { id: 3, module: 'takeout', name: '餐食类型', key: 'foodType', type: 'select', defaultValue: '快餐', required: true, status: 'Active', width: 100, options: ['中餐', '西餐', '快餐', '甜品', '饮品', '其他'] },
+      { id: 4, module: 'takeout', name: '住户姓名', key: 'residentName', type: 'text', defaultValue: '', required: true, status: 'Active', width: 100 },
+      { id: 5, module: 'takeout', name: '房号', key: 'roomNo', type: 'text', defaultValue: '', required: true, status: 'Active', width: 100 },
+      { id: 6, module: 'takeout', name: '联系电话', key: 'phone', type: 'text', defaultValue: '', required: true, status: 'Active', width: 120 },
+      { id: 7, module: 'takeout', name: '配送员', key: 'deliveryPerson', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100 },
+      { id: 8, module: 'takeout', name: '配送员电话', key: 'deliveryPhone', type: 'text', defaultValue: '', required: false, status: 'Active', width: 120 },
+      { id: 9, module: 'takeout', name: '送达时间', key: 'deliveryTime', type: 'text', defaultValue: '', required: false, status: 'Active', width: 150 },
+      { id: 10, module: 'takeout', name: '订单状态', key: 'status', type: 'select', defaultValue: '待取餐', required: true, status: 'Active', width: 100, options: ['待取餐', '配送中', '已送达', '已取消', '异常'] },
+      { id: 11, module: 'takeout', name: '总金额', key: 'totalAmount', type: 'number', defaultValue: 0, required: true, status: 'Active', width: 100 },
+      { id: 12, module: 'takeout', name: '备注', key: 'remark', type: 'textarea', defaultValue: '', required: false, status: 'Active' },
+    ];
+
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.textContent += msg + '\n';
+      console.log(msg);
+    }
+
+    function diagnose() {
+      const resultEl = document.getElementById('result');
+      const statusEl = document.getElementById('status');
+      resultEl.style.display = 'block';
+      
+      log('=== 开始诊断 ===');
+      
+      // 检查 localStorage
+      log('1. 检查 wo_field_configs:');
+      const stored = localStorage.getItem('wo_field_configs');
+      if (stored) {
+        try {
+          const configs = JSON.parse(stored);
+          log('   - localStorage 中有配置');
+          log('   - 已配置的模块: ' + Object.keys(configs).join(', '));
+          if (configs.takeout) {
+            log('   - ✅ takeout 模块已配置 (' + configs.takeout.length + ' 个字段)');
+          } else {
+            log('   - ❌ takeout 模块未配置');
+          }
+        } catch (e) {
+          log('   - ❌ localStorage 数据损坏: ' + e.message);
+        }
+      } else {
+        log('   - ❌ localStorage 中没有 wo_field_configs');
+      }
+      
+      // 检查 takeout orders
+      log('\n2. 检查 wo_takeout_orders:');
+      const orders = localStorage.getItem('wo_takeout_orders');
+      if (orders) {
+        try {
+          const data = JSON.parse(orders);
+          log('   - ✅ 有 ' + data.length + ' 条订单数据');
+        } catch (e) {
+          log('   - ❌ 订单数据损坏');
+        }
+      } else {
+        log('   - ℹ️ 暂无订单数据（正常）');
+      }
+      
+      // 检查路由
+      log('\n3. 检查当前路由:');
+      log('   - 当前路径: ' + window.location.pathname);
+      
+      // 模拟检查 getActiveFields 函数
+      log('\n4. 检查 getActiveFields 函数:');
+      if (typeof getActiveFields === 'function') {
+        try {
+          const fields = getActiveFields('takeout');
+          log('   - ✅ getActiveFields("takeout") 返回 ' + (fields?.length || 0) + ' 个字段');
+        } catch (e) {
+          log('   - ❌ getActiveFields 报错: ' + e.message);
+        }
+      } else {
+        log('   - ℹ️ getActiveFields 函数未定义（需要在 Vue 环境中）');
+      }
+      
+      statusEl.className = 'section ok';
+      statusEl.innerHTML = '✅ 诊断完成，请查看下方结果';
+      
+      log('\n=== 诊断结束 ===');
+    }
+
+    function fixAndGo() {
+      const statusEl = document.getElementById('status');
+      
+      // 清除旧配置
+      localStorage.removeItem('wo_field_configs');
+      
+      // 重新设置 takeout 配置
+      const configs = {};
+      configs.takeout = TAKEOUT_FIELDS;
+      localStorage.setItem('wo_field_configs', JSON.stringify(configs));
+      
+      statusEl.className = 'section ok';
+      statusEl.innerHTML = '✅ 已修复！正在跳转到外卖管理页面...';
+      
+      setTimeout(() => {
+        window.location.href = '/takeout';
+      }, 500);
+    }
+
+    function reset() {
+      if (confirm('这将清除所有模块的字段配置，确定吗？')) {
+        localStorage.removeItem('wo_field_configs');
+        localStorage.removeItem('wo_takeout_orders');
+        localStorage.removeItem('token');
+        
+        const statusEl = document.getElementById('status');
+        statusEl.className = 'section info';
+        statusEl.innerHTML = '🗑️ 已清除所有缓存，请重新登录系统';
+        
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 500);
+      }
+    }
+
+    // 自动诊断
+    setTimeout(diagnose, 500);
+  </script>
+</body>
+</html>

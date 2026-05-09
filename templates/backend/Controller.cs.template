@@ -1,0 +1,159 @@
+using Microsoft.AspNetCore.Mvc;
+using MySqlConnector;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System;
+
+// POST 请求体 DTO
+public class {ModuleName}Dto
+{
+    public string? Field1 { get; set; }
+    public string? Field2 { get; set; }
+}
+
+/// <summary>
+/// {ModuleName} API
+/// </summary>
+[ApiController]
+[Route("api/{module-records}")]
+public class {ModuleName}Controller : ControllerBase
+{
+    private readonly MySqlConnection _db;
+    private readonly ILogger<{ModuleName}Controller> _logger;
+
+    public {ModuleName}Controller(MySqlConnection db, ILogger<{ModuleName}Controller> logger)
+    {
+        _db = db;
+        _logger = logger;
+        if (_db.State != System.Data.ConnectionState.Open)
+            _db.Open();
+    }
+
+    /// <summary>
+    /// 获取列表（分页/过滤）
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? keyword,
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        var conditions = new List<string>();
+        var parameters = new List<MySqlParameter>();
+
+        if (!string.IsNullOrEmpty(keyword))
+        {
+            conditions.Add("Field1 LIKE @keyword");
+            parameters.Add(new MySqlParameter("@keyword", $"%{keyword}%"));
+        }
+
+        if (!string.IsNullOrEmpty(status) && status != "all")
+        {
+            conditions.Add("Status = @status");
+            parameters.Add(new MySqlParameter("@status", status));
+        }
+
+        var whereClause = conditions.Count > 0 ? " WHERE " + string.Join(" AND ", conditions) : "";
+
+        var offset = (page - 1) * pageSize;
+        parameters.Add(new MySqlParameter("@offset", offset));
+        parameters.Add(new MySqlParameter("@pageSize", pageSize));
+
+        var countCmd = $"SELECT COUNT(*) FROM {ModuleName} {whereClause}";
+        var dataCmd = $@"
+            SELECT * FROM {ModuleName}
+            {whereClause}
+            ORDER BY Id DESC
+            LIMIT @pageSize OFFSET @offset";
+
+        using var countReader = await new MySqlCommand(countCmd, _db).ExecuteReaderAsync();
+        await countReader.ReadAsync();
+        var total = countReader.GetInt32(0);
+        countReader.Close();
+
+        var data = new List<Dictionary<string, object>>();
+        using var reader = await new MySqlCommand(dataCmd, _db).ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            data.Add(row);
+        }
+
+        return Ok(new { success = true, data, total, page, pageSize });
+    }
+
+    /// <summary>
+    /// 获取单条记录
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        using var reader = await new MySqlCommand($"SELECT * FROM {ModuleName} WHERE Id = @id", _db).ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            reader.Close();
+            return Ok(new { success = true, data = row });
+        }
+        reader.Close();
+        return NotFound(new { success = false, message = "记录不存在" });
+    }
+
+    /// <summary>
+    /// 新增记录
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] {ModuleName}Dto dto)
+    {
+        var fields = new List<string>();
+        var values = new List<string>();
+        var parameters = new List<MySqlParameter>();
+
+        // TODO: 添加实际字段映射
+        // fields.Add("Field1"); values.Add("@Field1"); parameters.Add(new MySqlParameter("@Field1", dto.Field1));
+
+        var sql = $"INSERT INTO {ModuleName} ({string.Join(", ", fields)}) VALUES ({string.Join(", ", values)})";
+        var cmd = new MySqlCommand(sql, _db);
+        foreach (var p in parameters) cmd.Parameters.Add(p);
+        await cmd.ExecuteNonQueryAsync();
+
+        var id = (int)new MySqlCommand("SELECT LAST_INSERT_ID()", _db).ExecuteScalarAsync().Result;
+        return Ok(new { success = true, data = new { id } });
+    }
+
+    /// <summary>
+    /// 更新记录
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(int id, [FromBody] {ModuleName}Dto dto)
+    {
+        // TODO: 添加实际字段映射
+        var sql = $"UPDATE {ModuleName} SET Field1 = @Field1 WHERE Id = @id";
+        var cmd = new MySqlCommand(sql, _db);
+        cmd.Parameters.AddWithValue("@id", id);
+        // cmd.Parameters.AddWithValue("@Field1", dto.Field1);
+        var rows = await cmd.ExecuteNonQueryAsync();
+        return rows > 0
+            ? Ok(new { success = true })
+            : NotFound(new { success = false, message = "记录不存在" });
+    }
+
+    /// <summary>
+    /// 删除记录
+    /// </summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var cmd = new MySqlCommand($"DELETE FROM {ModuleName} WHERE Id = @id", _db);
+        cmd.Parameters.AddWithValue("@id", id);
+        var rows = await cmd.ExecuteNonQueryAsync();
+        return rows > 0
+            ? Ok(new { success = true })
+            : NotFound(new { success = false, message = "记录不存在" });
+    }
+}

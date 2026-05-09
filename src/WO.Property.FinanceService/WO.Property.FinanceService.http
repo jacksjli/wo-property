@@ -1,0 +1,6 @@
+@WO.Property.FinanceService_HostAddress = http://localhost:5281
+
+GET {{WO.Property.FinanceService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

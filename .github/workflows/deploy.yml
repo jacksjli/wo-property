@@ -1,0 +1,219 @@
+name: 🚀 CD - Production Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境 (test/staging/prod)'
+        required: true
+        default: 'prod'
+      service:
+        description: '部署服务 (all/gateway/auth-service/...)'
+        required: false
+        default: 'all'
+      version:
+        description: '指定镜像版本（Git SHA），留空则使用 latest main'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/woproperty
+
+jobs:
+  # =========================================================
+  # Job 1: 部署审批门禁
+  # =========================================================
+  approval-gate:
+    name: 🔒 Approval Gate
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: https://wo-property.example.com
+    steps:
+      - name: Approval check
+        run: |
+          echo "🔐 生产环境部署需要审批"
+          echo "部署环境: ${{ github.event.inputs.environment }}"
+          echo "触发人: ${{ github.actor }}"
+          echo "仓库: ${{ github.repository }}"
+
+  # =========================================================
+  # Job 2: 生产环境部署
+  # =========================================================
+  deploy-prod:
+    name: 🚀 Deploy to Production
+    needs: approval-gate
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: https://wo-property.example.com
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine deployment version
+        id: version
+        run: |
+          if [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            DEPLOY_VERSION="${{ github.event.inputs.version }}"
+          else
+            DEPLOY_VERSION="main-${{ github.sha }}"
+          fi
+          echo "version=$DEPLOY_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Deploying version: $DEPLOY_VERSION"
+
+      # ── 通知开始部署 ─────────────────────────────────────
+      - name: 📣 Notify deployment start (DingTalk)
+        if: env.DINGTALK_WEBHOOK != ''
+        uses: actions-cool/discord-webhook@v1
+        with:
+          webhook-url: ${{ secrets.DINGTALK_WEBHOOK }}
+          message: |
+            🚀 **WO-Property 生产部署开始**
+            - 版本: `${{ steps.version.outputs.version }}`
+            - 服务: `${{ github.event.inputs.service || 'all' }}`
+            - 触发人: @${{ github.actor }}
+            - 时间: ${{ github.event.created_at }}
+
+      # ── 远程服务器拉取并启动 ──────────────────────────────
+      - name: 🚀 Deploy to production server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          port: ${{ secrets.PROD_SERVER_PORT || 22 }}
+          envs:
+            DEPLOY_VERSION: ${{ steps.version.outputs.version }}
+            REGISTRY: ${{ env.REGISTRY }}
+            IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
+          script: |
+            set -e
+            echo "📦 部署版本: $DEPLOY_VERSION"
+
+            # 写入 docker-compose override
+            cat > /opt/wo-property/docker-compose.prod.yml << 'EOFYML'
+            version: '3.8'
+            services:
+              gateway:
+                image: ${REGISTRY}/${IMAGE_PREFIX}/gateway:${DEPLOY_VERSION}
+                pull_policy: always
+              auth-service:
+                image: ${REGISTRY}/${IMAGE_PREFIX}/auth-service:${DEPLOY_VERSION}
+                pull_policy: always
+              masterdata-service:
+                image: ${REGISTRY}/${IMAGE_PREFIX}/masterdata-service:${DEPLOY_VERSION}
+                pull_policy: always
+              person-service:
+                image: ${REGISTRY}/${IMAGE_PREFIX}/person-service:${DEPLOY_VERSION}
+                pull_policy: always
+              ticket-service:
+                image: ${REGISTRY}/${IMAGE_PREFIX}/ticket-service:${DEPLOY_VERSION}
+                pull_policy: always
+              frontend:
+                image: ${REGISTRY}/${IMAGE_PREFIX}/frontend:${DEPLOY_VERSION}
+                pull_policy: always
+            EOFYML
+
+            # 备份当前版本
+            cd /opt/wo-property
+            if [ -f docker-compose.yml ]; then
+              cp docker-compose.yml docker-compose.yml.backup.$(date +%Y%m%d%H%M%S)
+            fi
+
+            # 拉取新镜像
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+
+            # 重启服务
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+
+            echo "✅ 镜像拉取完成，服务启动中..."
+
+      # ── 健康检查 ────────────────────────────────────────
+      - name: 🩺 Health Check
+        id: health
+        run: |
+          MAX_RETRIES=30
+          RETRY_INTERVAL=10
+          PROD_HOST="${{ secrets.PROD_SERVER_HOST }}"
+          PROD_PORT="${PROD_PORT:-80}"
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "🔍 Health check attempt $i/$MAX_RETRIES..."
+
+            # 前端健康检查
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${PROD_HOST}:${PROD_PORT}/ || echo "000")
+            if [[ "$HTTP_CODE" == "200" ]]; then
+              echo "✅ 前端健康检查通过 (HTTP $HTTP_CODE)"
+            else
+              echo "⏳ 前端返回 HTTP $HTTP_CODE，等待..."
+              sleep $RETRY_INTERVAL
+              continue
+            fi
+
+            # 后端网关健康检查
+            GATEWAY_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${PROD_HOST}:${PROD_PORT}/api/health || echo "000")
+            if [[ "$GATEWAY_CODE" == "200" ]]; then
+              echo "✅ 网关健康检查通过 (HTTP $GATEWAY_CODE)"
+            else
+              echo "⏳ 网关返回 HTTP $GATEWAY_CODE，等待..."
+              sleep $RETRY_INTERVAL
+              continue
+            fi
+
+            echo "🎉 所有健康检查通过！"
+            exit 0
+          done
+
+          echo "❌ 健康检查超时，触发回滚"
+          exit 1
+
+      # ── 回滚机制 ────────────────────────────────────────
+      - name: ⏪ Rollback on failure
+        if: failure() && steps.health.outcome != 'success'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          port: ${{ secrets.PROD_SERVER_PORT || 22 }}
+          script: |
+            set -e
+            echo "⚠️ 回滚到上一个稳定版本..."
+            cd /opt/wo-property
+            # 找到最新的备份
+            BACKUP=$(ls -t docker-compose.yml.backup.* 2>/dev/null | head -1)
+            if [[ -n "$BACKUP" ]]; then
+              echo "📦 从 $BACKUP 恢复..."
+              cp "$BACKUP" docker-compose.yml
+              docker compose -f docker-compose.yml up -d
+              echo "✅ 回滚完成"
+            else
+              echo "⚠️ 没有找到备份，手动检查"
+            fi
+
+      # ── 通知部署结果 ────────────────────────────────────
+      - name: 📣 Notify deployment result
+        if: always()
+        uses: actions-cool/discord-webhook@v1
+        with:
+          webhook-url: ${{ secrets.DINGTALK_WEBHOOK }}
+          message: |
+            ${{ job.status == 'success' && '✅' || '❌' }} **WO-Property 生产部署${{ job.status == 'success' && '成功' || '失败' }}**
+            - 版本: `${{ steps.version.outputs.version }}`
+            - 服务: `${{ github.event.inputs.service || 'all' }}`
+            - 触发人: @${{ github.actor }}
+            - 结果: ${{ job.status }}
+            ${{ job.status != 'success' && '- 回滚已触发，请检查服务器状态' || '' }}
+
+      - name: Create deployment record
+        if: always()
+        run: |
+          echo "Deployment record:"
+          echo "  - Version: ${{ steps.version.outputs.version }}"
+          echo "  - Status: ${{ job.status }}"
+          echo "  - Actor: ${{ github.actor }}"
+          echo "  - Run: ${{ github.run_id }}"
+          # 可扩展：写入 JSON 文件或调用外部 API 记录

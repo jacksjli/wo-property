@@ -1,0 +1,26 @@
+# WO.Property.ProjectConfigService - config.yaml.example
+# 项目配置后端持久化服务
+
+jwt:
+  secretKey: "CHANGE_ME_USE_STRONG_RANDOM_KEY_IN_PRODUCTION"
+  issuer: "wo-property-unified-auth"
+  audience: "wo-property-services"
+
+database:
+  provider: "SQLite"
+  sqlitePath: "Data Source=project_config.db"
+
+  # 生产环境 MySQL
+  # provider: "MySQL"
+  # mysql:
+  #   server: "localhost"
+  #   port: 3306
+  #   database: "wo_project_config"
+  #   user: "root"
+  #   password: "your-secure-password"
+
+app:
+  host: "0.0.0.0"
+  port: 5020
+  allowedOrigins:
+    - "http://localhost:5173"

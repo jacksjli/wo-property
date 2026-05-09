@@ -1,0 +1,35 @@
+# ============================================================
+# Filebeat - DispatchService
+# ============================================================
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/woproperty/dispatchservice-*.log
+    json.keys_under_root: true
+    json.add_error_key: true
+    json.message_key: message
+    fields:
+      service: dispatchservice
+      application: wo-property
+    fields_under_root: true
+    multiline:
+      pattern: '^\{'
+      negate: true
+      match: after
+
+processors:
+  - add_docker_metadata: ~
+  - add_fields:
+      target: ''
+      fields:
+        service_name: dispatchservice
+        environment: production
+
+output.logstash:
+  hosts: ["wo-logstash:5044"]
+  ssl.enabled: false
+
+logging.level: info
+logging.to_files: false

@@ -1,0 +1,6 @@
+@WO.Property.MaterialService_HostAddress = http://localhost:5072
+
+GET {{WO.Property.MaterialService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

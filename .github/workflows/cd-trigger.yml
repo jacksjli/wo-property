@@ -1,0 +1,114 @@
+name: 🔔 CD Trigger (手动审批流)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要发布的镜像版本（Git SHA 或分支-SHA）'
+        required: true
+        default: ''
+      environment:
+        description: '目标环境 (staging/prod)'
+        required: true
+        default: 'prod'
+      reason:
+        description: '发布原因 / 备注'
+        required: false
+        default: ''
+
+jobs:
+  # =========================================================
+  # Job 1: 生成发布申请单
+  # =========================================================
+  create-release-request:
+    name: 📋 Create Release Request
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="main-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "📦 Release version: $VER"
+
+      - name: Print release summary
+        run: |
+          echo "=========================================="
+          echo "  WO-Property CD Release Request"
+          echo "=========================================="
+          echo "  版本:     ${{ steps.version.outputs.version }}"
+          echo "  环境:     ${{ github.event.inputs.environment }}"
+          echo "  触发人:   @${{ github.actor }}"
+          echo "  原因:     ${{ github.event.inputs.reason || '(未填写)' }}"
+          echo "  时间:     ${{ github.event.created_at }}"
+          echo "=========================================="
+
+      # ── 发送到审批群 ──────────────────────────────────
+      - name: 📣 Send release request to DingTalk
+        if: env.DINGTALK_WEBHOOK != ''
+        uses: actions-cool/discord-webhook@v1
+        with:
+          webhook-url: ${{ secrets.DINGTALK_WEBHOOK }}
+          message: |
+            🔔 **WO-Property 发布申请单**
+            ---
+            📦 **版本:** `${{ steps.version.outputs.version }}`
+            🌍 **环境:** `${{ github.event.inputs.environment }}`
+            👤 **申请人:** @${{ github.actor }}
+            📝 **原因:** ${{ github.event.inputs.reason || '(未填写)' }}
+            ⏰ **时间:** ${{ github.event.created_at }}
+            ---
+            ⚠️ 请确认后，在 GitHub Actions 页面手动触发 `CD - Production Deploy` workflow。
+
+      # ── 等待审批（人工确认） ──────────────────────────
+      # 说明：通过 environment: prod 的 GitHub Environment Protection Rules 实现
+      # 设置 required_reviewers 后，workflow_dispatch 会自动等待审批
+      - name: Wait for approval
+        run: |
+          echo "⏳ 等待审批中..."
+          echo "请在 GitHub → Settings → Environments → prod 中配置审批人员"
+          echo "或者联系 DevOps 负责人批准此次发布"
+
+  # =========================================================
+  # Job 2: 触发实际部署 workflow
+  # =========================================================
+  trigger-deploy:
+    name: 🚀 Trigger CD Deploy Workflow
+    needs: create-release-request
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+      url: https://${{ github.event.inputs.environment }}.wo-property.example.com
+
+    steps:
+      - name: 🚀 Dispatch deploy workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const response = await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: 'main',
+              inputs: {
+                environment: {
+                  value: '${{ github.event.inputs.environment }}',
+                },
+                version: {
+                  value: '${{ needs.create-release-request.outputs.version }}',
+                },
+                service: {
+                  value: 'all',
+                }
+              }
+            });
+            console.log('✅ Deploy workflow triggered:', response.status);

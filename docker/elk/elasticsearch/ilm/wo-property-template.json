@@ -1,0 +1,36 @@
+{
+  "index_patterns": ["wo-property-*", "apigateway-*", "personservice-*", "ticketservice-*", "dispatchservice-*", "materials-*", "authservice-*", "ticketserv-*", "masterdata-*", "gateways-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "wo-property-logs-policy",
+      "index.lifecycle.rollover_alias": "wo-property-logs"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "log_level": { "type": "keyword" },
+        "trace_id": { "type": "keyword" },
+        "service_name": { "type": "keyword" },
+        "log_message": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "exception": { "type": "text" },
+        "context": { "type": "object", "enabled": false },
+        "elapsed_ms": { "type": "float" },
+        "http_method": { "type": "keyword" },
+        "http_path": { "type": "keyword" },
+        "http_status_code": { "type": "integer" },
+        "container_name": { "type": "keyword" },
+        "host": { "type": "keyword" },
+        "severity": { "type": "keyword" },
+        "environment": { "type": "keyword" },
+        "application": { "type": "keyword" },
+        "ServiceName": { "type": "keyword" },
+        "Application": { "type": "keyword" },
+        "machine_name": { "type": "keyword" }
+      }
+    }
+  },
+  "priority": 200,
+  "composed_of": []
+}

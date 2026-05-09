@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WO物业管理系统 - 完整版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .header {
+            background: rgba(255,255,255,0.95);
+            padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 20px; color: #333; }
+        .user-info { font-size: 14px; color: #666; }
+        .logout-btn {
+            background: #ff4d4f;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-left: 15px;
+        }
+        .container { padding: 30px; }
+        
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.3); }
+        .tab-btn.active {
+            background: white;
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        /* 卡片 */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .card h3 { color: #333; margin-bottom: 15px; font-size: 16px; }
+        
+        /* 统计卡片 */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .stat-card .value { font-size: 28px; font-weight: 700; color: #667eea; }
+        .stat-card .label { color: #888; font-size: 14px; margin-top: 5px; }
+        
+        /* 表格 */
+        .table-container { overflow-x: auto; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 600px;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th { background: #f8f9fa; color: #333; font-weight: 600; }
+        tr:hover { background: #f8f9fa; }
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-expired { background: #f8d7da; color: #721c24; }
+        .status-paid { background: #cce5ff; color: #004085; }
+        
+        /* 登录框 */
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-box h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #555; }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-login:disabled { background: #ccc; }
+        .login-result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .login-result.show { display: block; }
+        
+        /* 隐藏内容区 */
+        #mainContent { display: none; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script>
+        const AUTH_SERVICE = 'http://localhost:5006';
+        const SERVICES = {
+            tickets: 'http://localhost:5002',
+            devices: 'http://localhost:5007',
+            materials: 'http://localhost:5004',
+            notifications: 'http://localhost:5005',
+            contracts: 'http://localhost:5008'
+        };
+        
+        let currentTab = 'dashboard';
+        let token = localStorage.getItem('auth_token');
+        let userInfo = JSON.parse(localStorage.getItem('user_info') || 'null');
+        
+        // 检查登录状态
+        function checkLogin() {
+            if (token && userInfo) {
+                showMainApp();
+            } else {
+                showLogin();
+            }
+        }
+        
+        // 显示登录页面
+        function showLogin() {
+            document.getElementById('app').innerHTML = `
+                <div class="login-container">
+                    <div class="login-box">
+                        <h1>🏠 WO物业管理系统</h1>
+                        <div class="form-group">
+                            <label>用户名</label>
+                            <input type="text" id="username" value="admin" placeholder="请输入用户名">
+                        </div>
+                        <div class="form-group">
+                            <label>密码</label>
+                            <input type="password" id="password" value="Admin@123" placeholder="请输入密码">
+                        </div>
+                        <button class="btn-login" onclick="doLogin()">登录</button>
+                        <div id="loginResult" class="login-result"></div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 执行登录
+        async function doLogin() {
+            const btn = document.querySelector('.btn-login');
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const result = document.getElementById('loginResult');
+            
+            btn.disabled = true;
+            btn.textContent = '登录中...';
+            
+            try {
+                const response = await fetch(`${AUTH_SERVICE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    token = data.data.token;
+                    userInfo = data.data.user;
+                    localStorage.setItem('auth_token', token);
+                    localStorage.setItem('user_info', JSON.stringify(userInfo));
+                    showMainApp();
+                } else {
+                    result.className = 'login-result show';
+                    result.style.background = '#f8d7da';
+                    result.style.color = '#721c24';
+                    result.textContent = '登录失败: ' + data.message;
+                    btn.disabled = false;
+                    btn.textContent = '登录';
+                }
+            } catch (error) {
+                result.className = 'login-result show';
+                result.style.background = '#f8d7da';
+                result.style.color = '#721c24';
+                result.textContent = '连接错误: ' + error.message;
+                btn.disabled = false;
+                btn.textContent = '登录';
+            }
+        }
+        
+        // 显示主应用
+        function showMainApp() {
+            document.getElementById('app').innerHTML = `
+                <div class="header">
+                    <h1>🏠 WO物业管理系统</h1>
+                    <div class="user-info">
+                        欢迎，<span style="color: #667eea; font-weight: 600;">${userInfo.fullName || userInfo.username}</span>
+                        <span style="background: #667eea; color: white; padding: 3px 10px; border-radius: 10px; font-size: 12px; margin-left: 8px;">${userInfo.role}</span>
+                        <button class="logout-btn" onclick="logout()">退出</button>
+                    </div>
+                </div>
+                <div class="container">
+                    <div class="tabs">
+                        <button class="tab-btn active" onclick="switchTab('dashboard')">📊 仪表板</button>
+                        <button class="tab-btn" onclick="switchTab('tickets')">📋 工单</button>
+                        <button class="tab-btn" onclick="switchTab('devices')">🔧 设备</button>
+                        <button class="tab-btn" onclick="switchTab('materials')">📦 物料</button>
+                        <button class="tab-btn" onclick="switchTab('contracts')">📄 合同</button>
+                        <button class="tab-btn" onclick="switchTab('notifications')">🔔 通知</button>
+                    </div>
+                    <div id="mainContent"></div>
+                </div>
+            `;
+            loadDashboard();
+        }
+        
+        // 切换标签
+        async function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            switch(tab) {
+                case 'dashboard': loadDashboard(); break;
+                case 'tickets': loadTickets(); break;
+                case 'devices': loadDevices(); break;
+                case 'materials': loadMaterials(); break;
+                case 'contracts': loadContracts(); break;
+                case 'notifications': loadNotifications(); break;
+            }
+        }
+        
+        // 加载仪表板
+        async function loadDashboard() {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '<div class="card"><h3>📊 数据加载中...</h3></div>';
+            
+            try {
+                const [ticketRes, deviceRes, materialRes, contractRes] = await Promise.all([
+                    fetch(`${SERVICES.tickets}/api/tickets`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${SERVICES.devices}/api/devices`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${SERVICES.materials}/api/materials`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${SERVICES.contracts}/api/contracts/stats`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                
+                const ticketData = await ticketRes.json();
+                const deviceData = await deviceRes.json();
+                const materialData = await materialRes.json();
+                const contractData = await contractRes.json();
+                
+                content.innerHTML = `
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="value">${ticketData.tickets?.length || 0}</div>
+                            <div class="label">工单总数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value">${deviceData.devices?.length || 0}</div>
+                            <div class="label">设备总数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value">${materialData.materials?.length || 0}</div>
+                            <div class="label">物料种类</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value">${contractData.data?.total || 0}</div>
+                            <div class="label">合同总数</div>
+                        </div>
+                    </div>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="value" style="color: #28a745;">${contractData.data?.active || 0}</div>
+                            <div class="label">生效合同</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value" style="color: #dc3545;">${contractData.data?.expired || 0}</div>
+                            <div class="label">已到期</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value">¥${((contractData.data?.totalAmount || 0) / 10000).toFixed(1)}万</div>
+                            <div class="label">合同总金额</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="card"><h3 style="color: #dc3545;">加载失败: ${error.message}</h3></div>`;
+            }
+        }
+        
+        // 加载工单
+        async function loadTickets() {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '<div class="card"><h3>📋 工单加载中...</h3></div>';
+            
+            try {
+                const res = await fetch(`${SERVICES.tickets}/api/tickets`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const tickets = data.tickets || [];
+                
+                content.innerHTML = `
+                    <div class="card">
+                        <h3>📋 工单列表 (${tickets.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>标题</th>
+                                        <th>类型</th>
+                                        <th>优先级</th>
+                                        <th>状态</th>
+                                        <th>创建时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${tickets.map(t => `
+                                        <tr>
+                                            <td>${t.id}</td>
+                                            <td>${t.title || t.description || '-'}</td>
+                                            <td>${t.type || '-'}</td>
+                                            <td><span class="status-badge ${t.priority === 'High' ? 'status-expired' : 'status-active'}">${t.priority || '-'}</span></td>
+                                            <td><span class="status-badge status-active">${t.status || '-'}</span></td>
+                                            <td>${new Date(t.createdAt || Date.now()).toLocaleDateString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="card"><h3 style="color: #dc3545;">加载失败: ${error.message}</h3></div>`;
+            }
+        }
+        
+        // 加载设备
+        async function loadDevices() {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '<div class="card"><h3>🔧 设备加载中...</h3></div>';
+            
+            try {
+                const res = await fetch(`${SERVICES.devices}/api/devices`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const devices = data.devices || [];
+                
+                content.innerHTML = `
+                    <div class="card">
+                        <h3>🔧 设备列表 (${devices.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>设备名称</th>
+                                        <th>设备类型</th>
+                                        <th>位置</th>
+                                        <th>状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${devices.map(d => `
+                                        <tr>
+                                            <td>${d.id}</td>
+                                            <td>${d.name || '-'}</td>
+                                            <td>${d.type || '-'}</td>
+                                            <td>${d.location || '-'}</td>
+                                            <td><span class="status-badge status-active">${d.status || '-'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="card"><h3 style="color: #dc3545;">加载失败: ${error.message}</h3></div>`;
+            }
+        }
+        
+        // 加载物料
+        async function loadMaterials() {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '<div class="card"><h3>📦 物料加载中...</h3></div>';
+            
+            try {
+                const res = await fetch(`${SERVICES.materials}/api/materials`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const materials = data.materials || [];
+                
+                content.innerHTML = `
+                    <div class="card">
+                        <h3>📦 物料列表 (${materials.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>物料名称</th>
+                                        <th>规格</th>
+                                        <th>库存</th>
+                                        <th>单位</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${materials.map(m => `
+                                        <tr>
+                                            <td>${m.id}</td>
+                                            <td>${m.name || '-'}</td>
+                                            <td>${m.specification || '-'}</td>
+                                            <td><span style="color: ${(m.quantity || 0) < 10 ? '#dc3545' : '#28a745'}">${m.quantity || 0}</span></td>
+                                            <td>${m.unit || '-'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="card"><h3 style="color: #dc3545;">加载失败: ${error.message}</h3></div>`;
+            }
+        }
+        
+        // 加载合同
+        async function loadContracts() {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '<div class="card"><h3>📄 合同加载中...</h3></div>';
+            
+            try {
+                const [contractsRes, statsRes, paymentsRes] = await Promise.all([
+                    fetch(`${SERVICES.contracts}/api/contracts`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${SERVICES.contracts}/api/contracts/stats`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${SERVICES.contracts}/api/payments`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                
+                const contractsData = await contractsRes.json();
+                const statsData = await statsRes.json();
+                const paymentsData = await paymentsRes.json();
+                
+                const statusMap = { 0: '草稿', 1: '生效中', 2: '即将到期', 3: '已到期', 4: '已终止' };
+                const typeMap = { 0: '物业', 1: '租赁', 2: '维护', 3: '服务' };
+                const paymentStatusMap = { 0: '待支付', 1: '已支付', 2: '逾期', 3: '已取消' };
+                
+                content.innerHTML = `
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="value">${statsData.data?.total || 0}</div>
+                            <div class="label">合同总数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value" style="color: #28a745;">${statsData.data?.active || 0}</div>
+                            <div class="label">生效中</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value" style="color: #ffc107;">${statsData.data?.expiringSoon || 0}</div>
+                            <div class="label">即将到期</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="value" style="color: #dc3545;">${statsData.data?.expired || 0}</div>
+                            <div class="label">已到期</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>📄 合同列表</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>合同号</th>
+                                        <th>标题</th>
+                                        <th>类型</th>
+                                        <th>甲方</th>
+                                        <th>乙方</th>
+                                        <th>金额</th>
+                                        <th>状态</th>
+                                        <th>到期日</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${(contractsData.contracts || []).map(c => `
+                                        <tr>
+                                            <td>${c.contractNumber}</td>
+                                            <td>${c.title}</td>
+                                            <td>${typeMap[c.type] || c.type}</td>
+                                            <td>${c.partyA}</td>
+                                            <td>${c.partyB}</td>
+                                            <td>¥${c.amount.toLocaleString()}</td>
+                                            <td><span class="status-badge ${c.status === 1 ? 'status-active' : c.status === 2 ? 'status-pending' : 'status-expired'}">${statusMap[c.status] || c.status}</span></td>
+                                            <td>${new Date(c.endDate).toLocaleDateString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>💰 付款记录</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>付款号</th>
+                                        <th>描述</th>
+                                        <th>金额</th>
+                                        <th>到期日</th>
+                                        <th>状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${(paymentsData.payments || []).map(p => `
+                                        <tr>
+                                            <td>${p.paymentNumber}</td>
+                                            <td>${p.description}</td>
+                                            <td>¥${p.amount.toLocaleString()}</td>
+                                            <td>${new Date(p.dueDate).toLocaleDateString()}</td>
+                                            <td><span class="status-badge ${p.status === 1 ? 'status-paid' : p.status === 2 ? 'status-expired' : 'status-pending'}">${paymentStatusMap[p.status] || p.status}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="card"><h3 style="color: #dc3545;">加载失败: ${error.message}</h3></div>`;
+            }
+        }
+        
+        // 加载通知
+        async function loadNotifications() {
+            const content = document.getElementById('mainContent');
+            content.innerHTML = '<div class="card"><h3>🔔 通知加载中...</h3></div>';
+            
+            try {
+                const res = await fetch(`${SERVICES.notifications}/api/notifications`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                const notifications = data.notifications || [];
+                
+                content.innerHTML = `
+                    <div class="card">
+                        <h3>🔔 通知列表 (${notifications.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>标题</th>
+                                        <th>类型</th>
+                                        <th>内容</th>
+                                        <th>时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${notifications.length === 0 ? '<tr><td colspan="5" style="text-align:center;">暂无通知</td></tr>' : 
+                                    notifications.map(n => `
+                                        <tr>
+                                            <td>${n.id}</td>
+                                            <td>${n.title || '-'}</td>
+                                            <td>${n.type || '-'}</td>
+                                            <td>${n.message || n.content || '-'}</td>
+                                            <td>${new Date(n.createdAt || Date.now()).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `<div class="card"><h3 style="color: #dc3545;">加载失败: ${error.message}</h3></div>`;
+            }
+        }
+        
+        // 登出
+        function logout() {
+            token = null;
+            userInfo = null;
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_info');
+            showLogin();
+        }
+        
+        // 初始化
+        checkLogin();
+    </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# WO.Property.GatewayService - config.yaml.example
+# API 网关统一入口配置
+
+jwt:
+  secretKey: "CHANGE_ME_USE_STRONG_RANDOM_KEY_IN_PRODUCTION"
+  issuer: "wo-property-unified-auth"
+  audience: "wo-property-services"
+  expiryDays: 7
+
+app:
+  host: "0.0.0.0"
+  port: 5000
+  allowedOrigins:
+    - "http://localhost:5173"
+    - "http://localhost:5174"
+    - "http://localhost:5175"
+  # 生产环境
+  # - "https://admin.your-domain.com"
+
+# YARP 路由配置（appsettings.json 中已有默认值，此处覆盖）
+# yarp:
+#   routes:
+#     auth-route:
+#       clusterId: auth-cluster
+#       ...

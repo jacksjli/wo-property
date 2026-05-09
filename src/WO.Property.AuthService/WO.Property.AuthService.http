@@ -1,0 +1,6 @@
+@WO.Property.AuthService_HostAddress = http://localhost:5285
+
+GET {{WO.Property.AuthService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

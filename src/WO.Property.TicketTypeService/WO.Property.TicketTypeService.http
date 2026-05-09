@@ -1,0 +1,33 @@
+@baseUrl = http://localhost:5029
+
+### Health check
+GET {{baseUrl}}/health
+
+### Get all ticket types
+GET {{baseUrl}}/api/ticket-types
+
+### Get ticket type by ID
+GET {{baseUrl}}/api/ticket-types/1
+
+### Create ticket type
+POST {{baseUrl}}/api/ticket-types
+Content-Type: application/json
+
+{
+  "name": "报修",
+  "code": "REPAIR",
+  "status": "Active",
+  "sortOrder": 1
+}
+
+### Update ticket type
+PUT {{baseUrl}}/api/ticket-types/1
+Content-Type: application/json
+
+{
+  "name": "维修报修",
+  "sortOrder": 2
+}
+
+### Delete ticket type
+DELETE {{baseUrl}}/api/ticket-types/1

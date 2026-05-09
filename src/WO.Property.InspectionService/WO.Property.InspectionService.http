@@ -1,0 +1,6 @@
+@WO.Property.InspectionService_HostAddress = http://localhost:5296
+
+GET {{WO.Property.InspectionService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

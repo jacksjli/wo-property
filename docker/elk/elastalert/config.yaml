@@ -1,0 +1,9 @@
+# ElastAlert configuration for WO-Property
+rules_folder: /opt/elastalert/rules
+run_every:
+  minutes: 5
+buffer_time:
+  hours: 4
+es_host: wo-elasticsearch
+es_port: 9200
+writeback_index: elastalert_status

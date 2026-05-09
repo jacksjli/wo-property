@@ -1,0 +1,13 @@
+### WO.Property.GatewayService
+### 健康检查
+GET http://localhost:5000/health
+
+### 认证接口（透传到 AuthService 5006）
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{"username":"admin","password":"Admin@123"}
+
+### 工单接口（透传到 TicketService 5002）
+GET http://localhost:5000/api/tickets
+Authorization: Bearer {{token}}

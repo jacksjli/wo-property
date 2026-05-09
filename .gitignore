@@ -1,0 +1,21 @@
+bin/
+obj/
+dist/
+publish/
+node_modules/
+.DS_Store
+*.log
+.env
+.vs/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Backup files
+*.bak
+*~
+
+# Local config overrides
+appsettings.*.local.json

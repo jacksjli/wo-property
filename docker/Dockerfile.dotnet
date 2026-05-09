@@ -1,0 +1,41 @@
+# WO 物业管理系统 - .NET 服务 Dockerfile 模板
+# 用法: 将此文件复制到各服务目录，或在 docker-compose.yml 中指定此文件
+
+# 阶段1: 构建
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# 复制项目文件
+COPY *.csproj ./
+RUN dotnet restore
+
+# 复制源代码并构建
+COPY . ./
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+# 阶段2: 运行
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# 创建非root用户
+RUN addgroup --system --gid 1000 appgroup && \
+    adduser --system --uid 1000 --ingroup appgroup appuser
+
+# 复制发布文件
+COPY --from=build /app/publish .
+
+# 设置权限
+RUN chown -R appuser:appgroup /app
+
+# 切换到非root用户
+USER appuser
+
+# 暴露端口 (在运行时通过环境变量覆盖)
+EXPOSE 5000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-5000}/health || exit 1
+
+# 启动命令
+ENTRYPOINT ["dotnet", "*.dll"]

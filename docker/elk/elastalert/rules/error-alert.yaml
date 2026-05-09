@@ -1,0 +1,16 @@
+# ElastAlert rule - Error rate alert for WO-Property services
+# Alert when error count exceeds threshold in 5-minute window
+
+name: WO-Property Error Alert
+type: frequency
+index: wo-property-*
+num_events: 10
+ timeframe:
+  minutes: 5
+ filter:
+  - term:
+      log_level: ERROR
+ alert:
+  - debug
+ alert_text: "WO-Property Error Alert - %s errors in last 5 minutes" % "@count"
+ alert_text_type: alert_text_only

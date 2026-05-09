@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WO物业 - Vue测试</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #app {
+            text-align: center;
+            color: white;
+        }
+        h1 { font-size: 48px; margin-bottom: 20px; }
+        .card {
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            min-width: 350px;
+        }
+        .test-list { list-style: none; margin: 20px 0; }
+        .test-list li { padding: 12px; margin: 8px 0; background: #f0f0f0; border-radius: 8px; color: #333; }
+        .btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="card">
+            <h1>🏠 WO物业管理系统</h1>
+            <p style="color: #667eea; font-size: 20px; margin-bottom: 20px;">Vue 3 CDN 版本测试</p>
+            
+            <ul class="test-list">
+                <li>✅ Vue版本: {{ vueVersion }}</li>
+                <li>✅ 点击次数: {{ count }}</li>
+                <li>✅ 时间: {{ currentTime }}</li>
+            </ul>
+            
+            <button class="btn" @click="increment">点击 +1</button>
+            <button class="btn" @click="testFetch">测试API</button>
+            
+            <div v-if="apiResult" style="margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 8px; color: #155724;">
+                {{ apiResult }}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue
+        
+        createApp({
+            setup() {
+                const count = ref(0)
+                const vueVersion = Vue.version
+                const currentTime = computed(() => new Date().toLocaleTimeString())
+                const apiResult = ref('')
+                
+                function increment() {
+                    count.value++
+                }
+                
+                async function testFetch() {
+                    try {
+                        const response = await fetch('http://localhost:5006/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                username: 'admin',
+                                password: 'Admin@123'
+                            })
+                        })
+                        const data = await response.json()
+                        if (data.success) {
+                            apiResult.value = `✅ API成功! 用户: ${data.data.user.username}`
+                        } else {
+                            apiResult.value = `❌ 失败: ${data.message}`
+                        }
+                    } catch (error) {
+                        apiResult.value = `❌ 错误: ${error.message}`
+                    }
+                }
+                
+                return {
+                    count,
+                    vueVersion,
+                    currentTime,
+                    apiResult,
+                    increment,
+                    testFetch
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

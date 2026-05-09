@@ -1,0 +1,38 @@
+# ============================================================
+# Filebeat - APIGateway Service
+# Collects logs from /var/log/woproperty/apigateway-*.log
+# ============================================================
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/woproperty/apigateway-*.log
+    json.keys_under_root: true
+    json.add_error_key: true
+    json.message_key: message
+    fields:
+      service: apigateway
+      application: wo-property
+    fields_under_root: true
+    multiline:
+      pattern: '^\{'
+      negate: true
+      match: after
+
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: ["container"]
+  - add_docker_metadata: ~
+  - add_fields:
+      target: ''
+      fields:
+        service_name: apigateway
+        environment: production
+
+output.logstash:
+  hosts: ["wo-logstash:5044"]
+  ssl.enabled: false
+
+logging.level: info
+logging.to_files: false

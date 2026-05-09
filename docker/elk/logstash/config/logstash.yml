@@ -1,0 +1,13 @@
+---
+# Logstash Configuration for WO-Property
+# Receives logs from Filebeat, processes and forwards to Elasticsearch
+
+http.host: "0.0.0.0"
+api.http.port: 9600
+
+# Pipeline workers
+pipeline.workers: 2
+pipeline.batch.size: 125
+
+# Slow log (disable in production to reduce noise)
+log.level: info

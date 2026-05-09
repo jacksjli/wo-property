@@ -1,0 +1,6 @@
+@WO.Property.ContractService_HostAddress = http://localhost:5014
+
+GET {{WO.Property.ContractService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

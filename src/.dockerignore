@@ -1,0 +1,52 @@
+# .NET/Docker 通用忽略文件
+# 适用于所有 .NET 服务
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE / Editor
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build 输出
+bin/
+obj/
+out/
+
+# 测试
+[x]unit/
+*Tests*/
+*.Test*/
+TestResults/
+
+# 文档
+*.md
+docs/
+*.pdf
+
+# Docker 文件（已在容器上下文中，不需要再 COPY）
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# 日志
+*.log
+logs/
+
+# 本地配置
+appsettings.Development.json
+appsettings.Local*.json
+secrets.json
+*.local.yaml
+
+# Node（前端项目用，后端不需要）
+node_modules/
+package*.json
+npm-debug.log
