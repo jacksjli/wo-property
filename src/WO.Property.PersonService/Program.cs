@@ -1,14 +1,15 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
-using WO.Property.PersonService.Data;
+using MySqlConnector;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.Shared.Configuration;
+using WO.Property.Shared.Logging;
+using WO.Property.PersonService.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -53,13 +54,6 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
-
-// Configure MySQL with Pomelo
-var connectionString = "Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;Connection Idle Timeout=60;Default Command Timeout=30;";
-builder.Services.AddDbContext<PersonDbContext>(options =>
-{
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
-}, ServiceLifetime.Scoped);
 
 // Configure JWT Authentication
 var jwtKey = JwtHelper.GetSecretKey();
@@ -136,18 +130,16 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Register DbInitializer as a singleton
-builder.Services.AddSingleton<DbInitializer>();
-
 var app = builder.Build();
 
-// Initialize database
+// Initialize database using raw MySqlConnection
 try
 {
-    using var scope = app.Services.CreateScope();
-    var context = scope.ServiceProvider.GetRequiredService<PersonDbContext>();
-    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
-    initializer.Initialize(context);
+    await using var conn = new MySqlConnection(
+        "Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=false;");
+    await conn.OpenAsync();
+    var initializer = new DbInitializer();
+    await initializer.InitializeAsync(conn);
     Log.Information("Database initialized successfully");
 }
 catch (Exception ex)
@@ -163,41 +155,11 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = string.Empty;
 });
 
-using WO.Property.Shared.Logging;
-
 app.UseRequestLogging();
 app.UseGlobalExceptionHandler();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-// 健康检查端点（统一格式）
-app.MapGet("/health", async (PersonDbContext context) =>
-{
-    var mysqlHealthy = false;
-    try
-    {
-        mysqlHealthy = await context.Database.CanConnectAsync();
-    }
-    catch { }
-    
-    var status = mysqlHealthy ? "healthy" : "unhealthy";
-    var httpStatus = mysqlHealthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable;
-    
-    var response = new
-    {
-        status,
-        service = "WO.Property.PersonService",
-        version = "1.0.0",
-        timestamp = DateTime.UtcNow,
-        dependencies = new Dictionary<string, object>
-        {
-            ["mysql"] = new { status = mysqlHealthy ? "healthy" : "unhealthy" }
-        }
-    };
-    
-    return Results.Json(response, statusCode: httpStatus);
-}).AllowAnonymous();
 
 app.Run();
