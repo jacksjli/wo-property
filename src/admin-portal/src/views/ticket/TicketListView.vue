@@ -284,7 +284,12 @@ const ticketStore = useTicketStore();
 const { fetchFieldConfig, getLabel } = useFieldConfig();
 
 // 字段标签（从 API 获取，alias 优先）
-const ticketLabels = ref<Record<string, string>>({});
+const ticketLabels = ref<Record<string, any>>({});
+
+// 获取某字段是否可编辑
+const isFieldEditable = (fieldKey: string): boolean => {
+  return ticketLabels.value[fieldKey]?.isEditable ?? true;
+};
 
 // 搜索和筛选
 const searchQuery = ref('');

@@ -1,6 +1,6 @@
 /**
- * useFieldConfig - 获取模块字段配置（alias 优先的 label）
- * 用法：const { getLabel, fieldConfig } = useFieldConfig('ticket')
+ * useFieldConfig - 获取模块字段配置（alias 优先的 label + isEditable 控制）
+ * 用法：const { getLabel, getEditable, fieldConfig } = useFieldConfig('ticket')
  */
 import { ref } from 'vue'
 import { masterDataService } from '@/api/masterDataService'
@@ -46,6 +46,21 @@ export function useFieldConfig() {
     return fallback
   }
 
+
+  /**
+   * 获取字段是否可编辑（isEditable）
+   * 只有 OwnerModule == 当前模块时才可编辑
+   * @returns true=可输入, false=只读, undefined=未配置（默认可编辑）
+   */
+  const getEditable = (module: string, fieldKey: string): boolean | undefined => {
+    const config = fieldConfigCache.value[module]
+    if (config && config[fieldKey]) {
+      return config[fieldKey].isEditable ?? true
+    }
+    return undefined
+  }
+
+
   /**
    * 强制刷新某模块配置
    */
@@ -59,6 +74,7 @@ export function useFieldConfig() {
     fieldConfig: fieldConfigCache,
     fetchFieldConfig,
     getLabel,
+    getEditable,
     refresh
   }
 }
