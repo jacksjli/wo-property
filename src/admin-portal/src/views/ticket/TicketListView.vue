@@ -83,7 +83,7 @@
         style="width: 100%"
         @row-click="handleRowClick"
       >
-        <el-table-column prop="ticketCode" label="工单号" width="140">
+        <el-table-column prop="ticketCode" :label="ticketLabels.ticketNo || '工单号'" width="140">
           <template #default="{ row }">
             <div class="ticket-code-cell">
               <span class="code">{{ row.ticketCode }}</span>
@@ -91,7 +91,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="title" label="标题" min-width="200">
+        <el-table-column prop="title" :label="ticketLabels.title || '标题'" min-width="200">
           <template #default="{ row }">
             <div class="title-cell">
               <div class="title">{{ row.title }}</div>
@@ -136,7 +136,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="createdAt" label="创建时间" width="140">
+        <el-table-column prop="createdAt" :label="ticketLabels.createdAt || '创建时间'" width="140">
           <template #default="{ row }">
             {{ formatDate(row.createdAt) }}
           </template>
@@ -201,7 +201,7 @@
         :rules="createRules"
         label-width="80px"
       >
-        <el-form-item label="标题" prop="title">
+        <el-form-item :label="ticketLabels.title || '标题'" prop="title">
           <el-input
             v-model="createForm.title"
             placeholder="请输入工单标题"
@@ -276,10 +276,15 @@ import { useAuthStore } from '@/stores/auth';
 import { useTicketStore } from '@/stores/ticket';
 import { ticketTypeStore } from '@/stores/ticketType';
 import type { Ticket, TicketOptions } from '@/stores/ticket';
+import { useFieldConfig } from '@/composables/useFieldConfig';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const ticketStore = useTicketStore();
+const { fetchFieldConfig, getLabel } = useFieldConfig();
+
+// 字段标签（从 API 获取，alias 优先）
+const ticketLabels = ref<Record<string, string>>({});
 
 // 搜索和筛选
 const searchQuery = ref('');
@@ -471,6 +476,9 @@ onMounted(async () => {
   if (ticketStore.tickets.length === 0) {
     await refreshTickets();
   }
+  // 加载字段配置（alias 优先的 label）
+  const config = await fetchFieldConfig('ticket');
+  if (config) ticketLabels.value = config;
 });
 </script>
 

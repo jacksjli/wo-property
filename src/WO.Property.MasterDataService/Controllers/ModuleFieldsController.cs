@@ -55,6 +55,49 @@ public class ModuleFieldsController : ControllerBase
     }
 
     /// <summary>
+    /// 获取某模块的字段配置（含 Alias 覆盖）
+    /// 返回 key → label 映射，前端可直接用于列标签
+    /// </summary>
+    [HttpGet("{module}/field-config")]
+    public async Task<IActionResult> GetFieldConfig(string module)
+    {
+        var sql = @"SELECT fd.FieldKey, fd.DisplayName, fd.FieldType, fd.IsShared,
+                    mf.Alias, mf.OwnerModule, mf.IsEditable, mf.IsVisible
+                    FROM ModuleFields mf
+                    INNER JOIN FieldDefinitions fd ON mf.FieldDefinitionId = fd.Id
+                    WHERE mf.Module = @module AND mf.IsVisible = 1
+                    ORDER BY mf.SortOrder, mf.Id";
+
+        using var cmd = new MySqlCommand(sql, _db);
+        cmd.Parameters.AddWithValue("@module", module);
+
+        var config = new Dictionary<string, FieldConfigItem>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var fieldKey = reader["FieldKey"].ToString() ?? "";
+            var displayName = reader["DisplayName"].ToString() ?? "";
+            var alias = reader["Alias"] as string;
+            // Alias 优先于 DisplayName
+            var label = !string.IsNullOrEmpty(alias) ? alias : displayName;
+            
+            config[fieldKey] = new FieldConfigItem
+            {
+                FieldKey = fieldKey,
+                Label = label,
+                DisplayName = displayName,
+                Alias = alias,
+                FieldType = reader["FieldType"].ToString() ?? "string",
+                IsShared = Convert.ToBoolean(reader["IsShared"]),
+                OwnerModule = reader["OwnerModule"] as string,
+                IsEditable = Convert.ToBoolean(reader["IsEditable"])
+            };
+        }
+
+        return Ok(new { success = true, data = config });
+    }
+
+    /// <summary>
     /// 为模块添加字段（从已有字段选择）
     /// </summary>
     [HttpPost]
@@ -80,8 +123,8 @@ public class ModuleFieldsController : ControllerBase
         }
 
         var insertSql = @"INSERT INTO ModuleFields 
-            (Module, FieldDefinitionId, IsVisible, IsActive, SortOrder, CreatedAt) 
-            VALUES (@Module, @FieldDefinitionId, @IsVisible, @IsActive, @SortOrder, @CreatedAt);
+            (Module, FieldDefinitionId, IsVisible, IsActive, SortOrder, CreatedAt, OwnerModule, IsEditable) 
+            VALUES (@Module, @FieldDefinitionId, @IsVisible, @IsActive, @SortOrder, @CreatedAt, @OwnerModule, @IsEditable);
             SELECT LAST_INSERT_ID();";
 
         using var cmd = new MySqlCommand(insertSql, _db);
@@ -91,6 +134,8 @@ public class ModuleFieldsController : ControllerBase
         cmd.Parameters.AddWithValue("@IsActive", request.IsActive);
         cmd.Parameters.AddWithValue("@SortOrder", request.SortOrder);
         cmd.Parameters.AddWithValue("@CreatedAt", DateTime.UtcNow);
+        cmd.Parameters.AddWithValue("@OwnerModule", (object)request.OwnerModule ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@IsEditable", request.IsEditable);
 
         var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
@@ -149,6 +194,24 @@ public class ModuleFieldsController : ControllerBase
             parameters.Add(new MySqlParameter("@sortOrder", request.SortOrder.Value));
         }
 
+        if (request.Alias != null)
+        {
+            updates.Add("Alias = @alias");
+            parameters.Add(new MySqlParameter("@alias", (object)request.Alias ?? DBNull.Value));
+        }
+
+        if (request.OwnerModule != null)
+        {
+            updates.Add("OwnerModule = @ownerModule");
+            parameters.Add(new MySqlParameter("@ownerModule", (object)request.OwnerModule ?? DBNull.Value));
+        }
+
+        if (request.IsEditable.HasValue)
+        {
+            updates.Add("IsEditable = @isEditable");
+            parameters.Add(new MySqlParameter("@isEditable", request.IsEditable.Value));
+        }
+
         if (!updates.Any())
             return Ok(new { Success = true, Message = "没有需要更新的字段" });
 
@@ -193,6 +256,9 @@ public class ModuleFieldsController : ControllerBase
             IsActive = Convert.ToBoolean(reader["IsActive"]),
             SortOrder = Convert.ToInt32(reader["SortOrder"]),
             CreatedAt = Convert.ToDateTime(reader["CreatedAt"]),
+            Alias = reader["Alias"] as string,
+            OwnerModule = reader["OwnerModule"] as string,
+            IsEditable = Convert.ToBoolean(reader["IsEditable"]),
             FieldDefinition = new FieldDefinitionInModuleResponse
             {
                 Id = Convert.ToInt32(reader["FieldDefinitionId"]),
@@ -223,6 +289,8 @@ public class AddModuleFieldRequest
     public bool IsVisible { get; set; } = true;
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; } = 0;
+    public string? OwnerModule { get; set; }
+    public bool IsEditable { get; set; } = false;
 }
 
 public class UpdateModuleFieldRequest
@@ -230,6 +298,9 @@ public class UpdateModuleFieldRequest
     public bool? IsVisible { get; set; }
     public bool? IsActive { get; set; }
     public int? SortOrder { get; set; }
+    public string? Alias { get; set; }
+    public string? OwnerModule { get; set; }
+    public bool? IsEditable { get; set; }
 }
 
 public class ModuleFieldResponse
@@ -241,6 +312,9 @@ public class ModuleFieldResponse
     public bool IsActive { get; set; }
     public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? Alias { get; set; }
+    public string? OwnerModule { get; set; }
+    public bool IsEditable { get; set; }
     public FieldDefinitionInModuleResponse? FieldDefinition { get; set; }
 }
 
@@ -267,4 +341,16 @@ public class ModuleFieldListResponse
 {
     public bool Success { get; set; } = true;
     public List<ModuleFieldResponse> Data { get; set; } = new();
+}
+
+public class FieldConfigItem
+{
+    public string FieldKey { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;       // alias > displayName
+    public string DisplayName { get; set; } = string.Empty; // 默认显示名
+    public string? Alias { get; set; }                     // 模块级别名
+    public string FieldType { get; set; } = "string";
+    public bool IsShared { get; set; }
+    public string? OwnerModule { get; set; }
+    public bool IsEditable { get; set; }
 }

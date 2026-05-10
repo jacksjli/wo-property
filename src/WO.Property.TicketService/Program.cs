@@ -23,7 +23,7 @@ builder.Services.AddControllers()
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySQL("Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=5;Maximum Pool Size=50;Connection Timeout=10;Connection Idle Timeout=300;Default Command Timeout=30;Default Command Timeout=30;"));
+    options.UseMySQL("Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=5;Maximum Pool Size=50;Connection Timeout=10;"));
 
 // PersonService HttpClient
 builder.Services.AddHttpClient("PersonService", client =>
@@ -138,6 +138,8 @@ public class AppDbContext : DbContext
             entity.Property(e => e.AssigneePersonId).HasColumnName("assignee_id");
             entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
             entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+            entity.Property(e => e.ContactPersonName).HasColumnName("ContactPersonName");
+            entity.Property(e => e.ContactPhone).HasColumnName("ContactPhone");
         });
 
         modelBuilder.Entity<TicketProcessRecord>(entity =>
@@ -184,6 +186,8 @@ public class Ticket : BaseEntity
     public new string? CreatedBy { get; set; }
     public int? AssigneePersonId { get; set; }
     public int? Rating { get; set; }
+    public string? ContactPersonName { get; set; }  // 标准化：contact_name
+    public string? ContactPhone { get; set; }          // 标准化：phone_number
 }
 
 public class TicketProcessRecord : BaseEntity
@@ -234,6 +238,8 @@ public class CreateTicketRequest
     public string Priority { get; set; } = "Medium";
     public string? Location { get; set; }
     public List<string>? Images { get; set; }
+    public string? ContactPersonName { get; set; }  // 标准化：contact_name
+    public string? ContactPhone { get; set; }          // 标准化：phone_number
 }
 
 public class DispatchRequest
@@ -382,6 +388,9 @@ public class TicketController : ControllerBase
             CategoryName = typeNames.GetValueOrDefault(t.Category ?? "", t.Category ?? ""),
             t.Location,
             t.CreatedAt,
+            // 标准化字段（contact_name / phone_number）
+            ContactPersonName = t.ContactPersonName,
+            ContactPhone = t.ContactPhone,
             t.CreatorPersonId,
             CreatorName = t.CreatorPersonId.HasValue
                 ? personNames.GetValueOrDefault(t.CreatorPersonId!.Value)
@@ -438,6 +447,8 @@ public class TicketController : ControllerBase
             Images = request.Images != null ? JsonSerializer.Serialize(request.Images) : null,
             Status = TicketStatusValues.Created,
             CreatorPersonId = creatorPersonId,
+            ContactPersonName = request.ContactPersonName,  // 标准化：contact_name
+            ContactPhone = request.ContactPhone,              // 标准化：phone_number
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -471,6 +482,9 @@ public class TicketController : ControllerBase
             ticket.Priority,
             ticket.Location,
             ticket.Images,
+            // 标准化字段（contact_name / phone_number）
+            ContactPersonName = ticket.ContactPersonName,
+            ContactPhone = ticket.ContactPhone,
             ticket.CreatorPersonId,
             CreatorName = ticket.CreatorPersonId.HasValue
                 ? personNames.GetValueOrDefault(ticket.CreatorPersonId!.Value)

@@ -406,6 +406,31 @@
             </div>
           </div>
         </el-card>
+
+        <!-- 跨模块关联记录 -->
+        <el-card class="linked-records-card" shadow="never" v-if="linkedRecords.length > 0">
+          <template #header>
+            <div class="linked-header">
+              <h3>关联记录</h3>
+              <span class="linked-badge">{{ linkedRecords.length }} 条记录</span>
+            </div>
+          </template>
+          <div class="linked-list">
+            <div v-for="group in linkedRecords" :key="group.module" class="linked-group">
+              <div class="linked-group-title">
+                <el-icon><<component :is="getModuleIcon(group.module)" /></el-icon>
+                {{ group.moduleName }}
+                <el-tag size="small" type="info">{{ group.records.length }} 条</el-tag>
+              </div>
+              <div class="linked-items">
+                <div v-for="record in group.records" :key="record.id" class="linked-item">
+                  <span class="linked-label">{{ record.label }}</span>
+                  <span class="linked-value">{{ record.value }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-card>
       </div>
     </div>
 
@@ -541,6 +566,7 @@ import { useTicketStore } from '@/stores/ticket';
 import { personnelStore } from '@/stores/personnel';
 import { ticketTypeStore } from '@/stores/ticketType';
 import type { UpdateTicketRequest } from '@/api/ticket';
+import { linkedService } from '@/api/linkedService';
 
 const route = useRoute();
 const router = useRouter();
@@ -959,19 +985,40 @@ const loadTicketData = async () => {
   }
 };
 
+// 跨模块关联记录
+const linkedRecords = ref<any[]>([]);
+
+// 加载跨模块关联记录
+const loadLinkedRecords = async () => {
+  const ticket = ticketStore.currentTicket;
+  if (!ticket) return;
+  const phone = ticket.contactPhone || ticket.reporterPhone;
+  if (!phone) return;
+  try {
+    const res = await linkedService.getByPhone(phone);
+    if (!res.data?.success || !res.data.data?.groups) return;
+    linkedRecords.value = res.data.data.groups.filter((g: any) => g.module !== 'ticket');
+  } catch {
+    // ignore - linked records are optional
+  }
+};
+
+// 获取模块图标
+const getModuleIcon = (module: string) => {
+  const icons: Record<string, string> = {
+    personnel: 'User',
+    visitor: 'User',
+    delivery: 'Box',
+    renovation: 'House',
+  };
+  return icons[module] || 'Document';
+};
+
 // 组件挂载时加载数据
 onMounted(() => {
   ticketTypeStore.fetchFromApi();
-  loadTicketData();
+  loadTicketData().then(() => loadLinkedRecords());
 });
-
-// 监听路由变化
-watch(() => route.params.id, () => {
-  if (route.name === 'ticket-detail') {
-    loadTicketData();
-  }
-});
-</script>
 
 <style scoped>
 .ticket-detail-view {
@@ -1224,5 +1271,80 @@ watch(() => route.params.id, () => {
 .summary-value {
   color: #1f2937;
   text-align: right;
+}
+
+/* 跨模块关联 */
+.linked-records-card {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.linked-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.linked-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.linked-badge {
+  background: #3b82f6;
+  color: white;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.linked-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+
+.linked-group {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.linked-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.linked-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 28px;
+}
+
+
+.linked-item {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+}
+
+
+.linked-label {
+  color: #6b7280;
+  min-width: 80px;
+}
+
+
+.linked-value {
+  color: #1f2937;
 }
 </style>

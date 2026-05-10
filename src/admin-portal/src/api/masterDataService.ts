@@ -54,6 +54,10 @@ export const masterDataApi = {
   getModuleFields: (module: string) =>
     client.get<ApiResponse<ModuleField[]>>(`/api/module-fields/${module}`),
 
+  /** 获取某模块的字段配置（含 alias 覆盖） */
+  getModuleFieldConfig: (module: string) =>
+    client.get<ApiResponse<Record<string, any>>>(`/api/module-fields/${module}/field-config`),
+
   /** 创建字段定义 */
   createFieldDefinition: (data: Partial<FieldDefinition>) =>
     client.post<FieldDefinition>('/api/field-definitions', data),

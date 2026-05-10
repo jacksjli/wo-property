@@ -70,6 +70,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // 健康检查端点（统一格式）
+var app = builder.Build();
 app.MapGet("/health", async () =>
 {
     var mysqlHealthy = false;

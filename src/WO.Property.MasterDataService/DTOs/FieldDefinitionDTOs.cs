@@ -140,6 +140,11 @@ public class AddModuleFieldRequest
     public bool IsActive { get; set; } = true;
 
     public int SortOrder { get; set; } = 0;
+
+    [MaxLength(50)]
+    public string? OwnerModule { get; set; }
+
+    public bool IsEditable { get; set; } = false;
 }
 
 /// <summary>
@@ -152,6 +157,14 @@ public class UpdateModuleFieldRequest
     public bool? IsActive { get; set; }
 
     public int? SortOrder { get; set; }
+
+    [MaxLength(100)]
+    public string? Alias { get; set; }
+
+    [MaxLength(50)]
+    public string? OwnerModule { get; set; }
+
+    public bool? IsEditable { get; set; }
 }
 
 /// <summary>
@@ -166,6 +179,9 @@ public class ModuleFieldResponse
     public bool IsActive { get; set; }
     public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? Alias { get; set; }
+    public string? OwnerModule { get; set; }
+    public bool IsEditable { get; set; }
     public FieldDefinitionResponse? FieldDefinition { get; set; }
 }
 

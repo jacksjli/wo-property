@@ -18,6 +18,7 @@ export const SERVICES = {
   device: 5007,
   accessControl: 5001,
   announcement: 5016,
+  person: 5018,
   cleaning: 5021,
   community: 5022,
   delivery: 5023,

@@ -22,7 +22,7 @@ const currentModule = ref('ticket')
 
 // 数据
 const availableFields = ref<FieldDefinition[]>([])
-const selectedModuleFields = ref<(ModuleField & { fieldDefinition?: FieldDefinition })[]>([])
+const selectedModuleFields = ref<(ModuleField & { fieldDefinition?: FieldDefinition; ownerModule?: string; isEditable?: boolean; alias?: string | null })[]>([])
 
 // 加载状态
 const loadingAvailable = ref(false)
@@ -36,6 +36,19 @@ const selectedFieldIds = computed(() => {
 // 未选择的可用字段
 const unselectedFields = computed(() => {
   return availableFields.value.filter(f => !selectedFieldIds.value.has(f.id))
+})
+
+// 编辑对话框
+const dialogVisible = ref(false)
+const editingField = ref<{
+  id?: number
+  ownerModule: string
+  isEditable: boolean
+  alias: string
+}>({
+  ownerModule: 'master',
+  isEditable: false,
+  alias: ''
 })
 
 // 加载可用字段
@@ -116,6 +129,55 @@ const removeField = async (mf: ModuleField & { fieldDefinition?: FieldDefinition
   }
 }
 
+// 打开编辑对话框
+const openEditDialog = (mf: ModuleField & { fieldDefinition?: FieldDefinition }) => {
+  editingField.value = {
+    id: mf.id,
+    ownerModule: (mf as any).ownerModule || 'master',
+    isEditable: (mf as any).isEditable ?? false,
+    alias: (mf as any).alias || ''
+  }
+  dialogVisible.value = true
+}
+
+// 关闭编辑对话框
+const closeEditDialog = () => {
+  dialogVisible.value = false
+  editingField.value = { ownerModule: 'master', isEditable: false, alias: '' }
+}
+
+// 保存编辑
+const saveEdit = async () => {
+  if (!editingField.value.id) return
+  try {
+    await masterDataApi.updateModuleField(editingField.value.id, {
+      ownerModule: editingField.value.ownerModule,
+      isEditable: editingField.value.isEditable,
+      alias: editingField.value.alias || null
+    } as any)
+    ElMessage.success('保存成功')
+    closeEditDialog()
+    await loadSelectedFields()
+  } catch (error: any) {
+    if (!error.response) {
+      ElMessage.success('保存成功（模拟）')
+      // 更新本地数据
+      const idx = selectedModuleFields.value.findIndex(mf => mf.id === editingField.value.id)
+      if (idx !== -1) {
+        selectedModuleFields.value[idx] = {
+          ...selectedModuleFields.value[idx],
+          ownerModule: editingField.value.ownerModule,
+          isEditable: editingField.value.isEditable,
+          alias: editingField.value.alias || null
+        }
+      }
+      closeEditDialog()
+    } else {
+      ElMessage.error('保存失败')
+    }
+  }
+}
+
 // 上移
 const moveUp = (index: number) => {
   if (index === 0) return
@@ -185,12 +247,12 @@ onMounted(() => {
       <!-- 右侧：字段配置 -->
       <div class="content">
         <el-row :gutter="16">
-          <!-- 可用字段列表 -->
+          <!-- 可选字段列表 -->
           <el-col :span="12">
             <el-card class="fields-card">
               <template #header>
                 <div class="card-header">
-                  <span>可用字段</span>
+                  <span>可选字段</span>
                   <el-tag size="small">{{ unselectedFields.length }} 个可选</el-tag>
                 </div>
               </template>
@@ -217,7 +279,7 @@ onMounted(() => {
                       添加
                     </el-button>
                   </div>
-                  <el-empty v-if="!loadingAvailable && unselectedFields.length === 0" description="无可用字段" />
+                  <el-empty v-if="!loadingAvailable && unselectedFields.length === 0" description="无可选字段" />
                 </div>
               </el-scrollbar>
             </el-card>
@@ -234,47 +296,45 @@ onMounted(() => {
               </template>
               <el-scrollbar height="calc(100vh - 320px)">
                 <div v-loading="loadingSelected" class="field-list">
-                  <div
-                    v-for="(mf, index) in selectedModuleFields"
-                    :key="mf.id"
-                    class="field-item selected"
+                  <el-table
+                    :data="selectedModuleFields"
+                    style="width: 100%"
+                    :show-header="true"
+                    :row-class-name="'field-table-row'"
+                    @row-click="(row: any) => openEditDialog(row)"
                   >
-                    <div class="field-info">
-                      <div class="field-name">{{ mf.fieldDefinition?.displayName }}</div>
-                      <div class="field-meta">
-                        <el-tag size="small">{{ mf.fieldDefinition?.fieldKey }}</el-tag>
-                        <el-tag size="small" type="info">
-                          {{ fieldTypeMap[mf.fieldDefinition?.fieldType || 'text'] }}
+                    <el-table-column prop="fieldDefinition?.displayName" label="字段" min-width="100">
+                      <template #default="{ row }">
+                        <span class="field-name-cell">{{ row.fieldDefinition?.displayName }}</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="ownerModule" label="Owner" width="80">
+                      <template #default="{ row }">{{ row.ownerModule || '-' }}</template>
+                    </el-table-column>
+                    <el-table-column prop="isEditable" label="可编辑" width="70" align="center">
+                      <template #default="{ row }">
+                        <el-tag :type="row.isEditable ? 'success' : 'info'" size="small">
+                          {{ row.isEditable ? '是' : '否' }}
                         </el-tag>
-                      </div>
-                    </div>
-                    <div class="field-actions">
-                      <el-button
-                        size="small"
-                        text
-                        :disabled="index === 0"
-                        @click="moveUp(index)"
-                      >
-                        ↑
-                      </el-button>
-                      <el-button
-                        size="small"
-                        text
-                        :disabled="index === selectedModuleFields.length - 1"
-                        @click="moveDown(index)"
-                      >
-                        ↓
-                      </el-button>
-                      <el-button
-                        size="small"
-                        text
-                        type="danger"
-                        @click="removeField(mf)"
-                      >
-                        移除
-                      </el-button>
-                    </div>
-                  </div>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="alias" label="别名" width="120">
+                      <template #default="{ row }">
+                        <span :class="{ 'alias-active': row.alias }">
+                          {{ row.alias || row.fieldDefinition?.displayName }}
+                        </span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="140" fixed="right">
+                      <template #default="{ row, $index }">
+                        <div class="table-actions" @click.stop>
+                          <el-button size="small" text :disabled="$index === 0" @click="moveUp($index)">↑</el-button>
+                          <el-button size="small" text :disabled="$index === selectedModuleFields.length - 1" @click="moveDown($index)">↓</el-button>
+                          <el-button size="small" text type="danger" @click="removeField(row)">移除</el-button>
+                        </div>
+                      </template>
+                    </el-table-column>
+                  </el-table>
                   <el-empty v-if="!loadingSelected && selectedModuleFields.length === 0" description="请从左侧添加字段" />
                 </div>
               </el-scrollbar>
@@ -283,6 +343,30 @@ onMounted(() => {
         </el-row>
       </div>
     </div>
+
+    <!-- 编辑对话框 -->
+    <el-dialog
+      v-model="dialogVisible"
+      title="编辑字段配置"
+      width="400px"
+      @close="closeEditDialog"
+    >
+      <el-form label-width="80px" label-position="left">
+        <el-form-item label="Owner">
+          <el-input v-model="editingField.ownerModule" placeholder="master" />
+        </el-form-item>
+        <el-form-item label="可编辑">
+          <el-switch v-model="editingField.isEditable" />
+        </el-form-item>
+        <el-form-item label="别名">
+          <el-input v-model="editingField.alias" placeholder="可选，用于覆盖显示名" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeEditDialog">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -363,11 +447,6 @@ onMounted(() => {
   background: #f3f4f6;
 }
 
-.field-item.selected {
-  background: #ecf5ff;
-  border-color: #409eff;
-}
-
 .field-info {
   flex: 1;
   min-width: 0;
@@ -390,5 +469,34 @@ onMounted(() => {
   display: flex;
   gap: 4px;
   align-items: center;
+}
+
+/* 新增样式 */
+:deep(.field-table-row) {
+  cursor: pointer;
+}
+
+:deep(.field-table-row:hover) {
+  background-color: #f5f7fa;
+}
+
+.field-name-cell {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.table-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.alias-active {
+  color: #67C23A;
+  font-weight: bold;
+}
+
+.alias-fallback {
+  color: #909399;
 }
 </style>
