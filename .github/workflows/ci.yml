@@ -5,6 +5,7 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   DOTNET_VERSION: '8.0'
@@ -90,12 +91,16 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: 还原依赖
-        run: dotnet restore
+        run: |
+          dotnet restore --verbosity minimal
+          echo "=== Restore complete ==="
 
       - name: 编译
         run: |
           rm -rf bin obj
-          dotnet build --configuration Release --no-restore
+          dotnet build --configuration Release --no-restore -v n 2>&1 | tee /tmp/build.log
+          echo "=== Build exit code: $? ==="
+          cat /tmp/build.log | tail -30
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
@@ -122,11 +127,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: ${{ env.PROJECT_ROOT }}/../admin-portal/package-lock.json
 
       - name: 安装依赖
-        run: npm ci
+        run: npm ci 2>&1 | tail -20
 
       - name: 类型检查
         run: npm run type-check 2>/dev/null || true
