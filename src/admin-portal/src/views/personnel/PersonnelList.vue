@@ -5,7 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting, User, UserFilled, Link, Phone, Po
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
-import { masterApi } from '@/api/http'
+import { personApi } from '@/api/http'
 
 // 类型定义
 type PersonnelRole = 'operator' | 'supervisor' | 'manager' | 'department_head' | 'company_head'
@@ -90,15 +90,15 @@ const filteredPersonnel = computed(() => {
   return result.sort((a, b) => {
     const levelA = getRoleLevel(a.role), levelB = getRoleLevel(b.role)
     if (levelA !== levelB) return levelA - levelB
-    return a.name.localeCompare(b.name)
+    return (a.name || '').localeCompare(b.name || '')
   })
 })
 
-const getRoleLevel = (role: PersonnelRole) => {
-  const levels: Record<PersonnelRole, number> = {
+const getRoleLevel = (role?: PersonnelRole | string) => {
+  const levels: Record<string, number> = {
     operator: 1, supervisor: 2, manager: 3, department_head: 4, company_head: 5
   }
-  return levels[role]
+  return levels[role || ''] ?? 0
 }
 
 // 对话框状态
@@ -140,12 +140,30 @@ const loadData = async () => {
     if (filterRole.value) params.role = filterRole.value
     if (filterDepartment.value) params.departmentId = filterDepartment.value
     if (filterStatus.value) params.status = filterStatus.value
-    const res: any = await masterApi.get('/personnel', { params })
+    const res: any = await personApi.get('/', { params })
     if (res.success) {
-      personnelList.value = (res.data || []).map((p: any) => ({
-        ...p,
-        specialties: p.specialties ? (typeof p.specialties === 'string' ? JSON.parse(p.specialties) : p.specialties) : [],
-        backups: p.backups ? (typeof p.backups === 'string' ? JSON.parse(p.backups) : p.backups) : []
+      const items = res.data?.items || []
+      personnelList.value = items.map((p: any) => ({
+        id: p.Id,
+        employeeNo: p.EmployeeNo,
+        name: p.Name,
+        avatar: p.Avatar,
+        gender: p.Gender,
+        birthday: p.Birthday,
+        idCard: p.IdCard,
+        phone: p.Phone,
+        email: p.Email,
+        address: p.Address,
+        education: p.Education,
+        role: p.Role,
+        departmentId: p.DepartmentId,
+        departmentName: p.DepartmentName,
+        position: p.Position,
+        employmentType: p.EmploymentType,
+        hireDate: p.HireDate,
+        status: p.Status,
+        specialties: p.Specialties ? (typeof p.Specialties === 'string' ? JSON.parse(p.Specialties) : p.Specialties) : [],
+        backups: p.Backups ? (typeof p.Backups === 'string' ? JSON.parse(p.Backups) : p.Backups) : []
       }))
     }
   } catch (e: any) { ElMessage.error(e.message || '加载失败') }

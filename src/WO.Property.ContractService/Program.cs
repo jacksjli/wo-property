@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -11,12 +13,15 @@ using WO.Property.Shared.Configuration;
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置端口
-builder.WebHost.UseUrls("http://0.0.0.0:5008");
+builder.WebHost.UseUrls("http://0.0.0.0:5001");
 
 // 添加数据库
 builder.Services.AddDbContext<ContractDbContext>(options =>
-    options.UseNpgsql("Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
-
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
 // JWT 配置 - 使用统一认证配置
 var jwtIssuer = "wo-property-unified-auth";
 var jwtAudience = "wo-property-services";
@@ -88,11 +93,6 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // 数据库迁移和种子数据
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<ContractDbContext>();
-    context.Database.EnsureCreated();
-}
 
 // 配置 Swagger
 app.UseSwagger();
@@ -111,8 +111,8 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "Cont
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Contract Service");
-Console.WriteLine("  Port: 5008");
-Console.WriteLine("  Swagger: http://localhost:5008/swagger");
+Console.WriteLine("  Port: 5001");
+Console.WriteLine("  Swagger: http://localhost:5001/swagger");
 Console.WriteLine("===========================================");
 
 app.Run();

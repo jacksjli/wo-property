@@ -260,22 +260,22 @@ const getTypeLabel = (t: string) => {
 
       <!-- 数据列表 -->
       <el-table :data="filteredList" stripe v-loading="loading" @row-click="handleView">
-        <el-table-column prop="KeyNo" label="钥匙编号" width="100" />
-        <el-table-column prop="Name" label="钥匙名称" min-width="150" />
-        <el-table-column prop="Type" label="类型" width="100" align="center">
+        <el-table-column prop="KeyNo" :label="keyLabels.keyNo?.label || keyLabels.KeyNo?.label || '钥匙编号'" width="100" />
+        <el-table-column prop="Name" :label="keyLabels.name?.label || keyLabels.Name?.label || '钥匙名称'" min-width="150" />
+        <el-table-column prop="Type" :label="keyLabels.type?.label || keyLabels.Type?.label || '类型'" width="100" align="center">
           <template #default="{ row }"><el-tag size="small">{{ getTypeLabel(row.Type) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="Location" label="存放位置" width="120" />
-        <el-table-column prop="Building" label="楼栋" width="80" align="center" />
-        <el-table-column prop="DoorNo" label="门牌号" width="80" align="center" />
-        <el-table-column prop="Quantity" label="数量" width="60" align="center" />
+        <el-table-column prop="Location" :label="keyLabels.location?.label || keyLabels.Location?.label || '存放位置'" width="120" />
+        <el-table-column prop="Building" :label="keyLabels.building?.label || keyLabels.Building?.label || '楼栋'" width="80" align="center" />
+        <el-table-column prop="DoorNo" :label="keyLabels.doorNo?.label || keyLabels.DoorNo?.label || '门牌号'" width="80" align="center" />
+        <el-table-column prop="Quantity" :label="keyLabels.quantity?.label || keyLabels.Quantity?.label || '数量'" width="60" align="center" />
         <el-table-column prop="Status" label="状态" width="90" align="center">
           <template #default="{ row }"><el-tag :type="getStatusType(row.Status)" size="small">{{ getStatusLabel(row.Status) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="Holder" label="持有人" width="100" align="center">
+        <el-table-column prop="Holder" :label="keyLabels.holder?.label || keyLabels.Holder?.label || '持有人'" width="100" align="center">
           <template #default="{ row }">{{ row.Holder || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="BorrowCount" label="借用次数" width="80" align="center" />
+        <el-table-column prop="BorrowCount" :label="keyLabels.borrowCount?.label || keyLabels.BorrowCount?.label || '借用次数'" width="80" align="center" />
         <el-table-column label="操作" width="150" fixed="right" align="center">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click.stop="handleEdit(row)">编辑</el-button>
@@ -289,41 +289,45 @@ const getTypeLabel = (t: string) => {
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
       <el-form label-width="100px">
         <el-row :gutter="20">
-          <el-col :span="12"><el-form-item label="钥匙编号" required><el-input v-model="form.keyNo" placeholder="如：KEY-001" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="钥匙名称" required><el-input v-model="form.name" placeholder="如：A栋101室钥匙" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="keyLabels.keyNo?.label || keyLabels.KeyNo?.label || '钥匙编号'" required><el-input v-model="form.keyNo" placeholder="如：KEY-001" :disabled="!isFieldEditable('keyNo') && !isFieldEditable('KeyNo')" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="keyLabels.name?.label || keyLabels.Name?.label || '钥匙名称'" required><el-input v-model="form.name" placeholder="如：A栋101室钥匙" :disabled="!isFieldEditable('name') && !isFieldEditable('Name')" /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="钥匙类型">
-              <el-select v-model="form.type" style="width: 100%">
+            <el-form-item :label="keyLabels.type?.label || keyLabels.Type?.label || '钥匙类型'">
+              <el-select v-model="form.type" style="width: 100%" :disabled="!isFieldEditable('type') && !isFieldEditable('Type')">
                 <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="存放位置">
-              <el-input v-model="form.location" placeholder="如：前台钥匙柜" />
+            <el-form-item :label="keyLabels.location?.label || keyLabels.Location?.label || '存放位置'">
+              <el-input v-model="form.location" placeholder="如：前台钥匙柜" :disabled="!isFieldEditable('location') && !isFieldEditable('Location')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
-          <el-col :span="8"><el-form-item label="楼栋"><el-input v-model="form.building" placeholder="如：A栋" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="楼层"><el-input v-model="form.floor" placeholder="如：1楼" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="门牌号"><el-input v-model="form.doorNo" placeholder="如：101" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="keyLabels.building?.label || keyLabels.Building?.label || '楼栋'"><el-input v-model="form.building" placeholder="如：A栋" :disabled="!isFieldEditable('building') && !isFieldEditable('Building')" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="keyLabels.floor?.label || keyLabels.Floor?.label || '楼层'"><el-input v-model="form.floor" placeholder="如：1楼" :disabled="!isFieldEditable('floor') && !isFieldEditable('Floor')" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item :label="keyLabels.doorNo?.label || keyLabels.DoorNo?.label || '门牌号'"><el-input v-model="form.doorNo" placeholder="如：101" :disabled="!isFieldEditable('doorNo') && !isFieldEditable('DoorNo')" /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="数量"><el-input-number v-model="form.quantity" :min="1" style="width: 100%" /></el-form-item>
+            <el-form-item :label="keyLabels.quantity?.label || keyLabels.Quantity?.label || '数量'"><el-input-number v-model="form.quantity" :min="1" style="width: 100%" :disabled="!isFieldEditable('quantity') && !isFieldEditable('Quantity')" /></el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="状态">
-              <el-select v-model="form.status" style="width: 100%">
+            <el-form-item :label="keyLabels.status?.label || keyLabels.Status?.label || '状态'">
+              <el-select v-model="form.status" style="width: 100%" :disabled="!isFieldEditable('status') && !isFieldEditable('Status')">
                 <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" placeholder="请输入备注" /></el-form-item>
+        <el-row :gutter="20">
+          <el-col :span="12"><el-form-item :label="keyLabels.holder?.label || keyLabels.Holder?.label || '借用人'"><el-input v-model="form.holder" placeholder="请输入借用人" :disabled="!isFieldEditable('holder') && !isFieldEditable('Holder')" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item :label="keyLabels.holderPhone?.label || keyLabels.HolderPhone?.label || '联系电话'"><el-input v-model="form.holderPhone" placeholder="请输入联系电话" :disabled="!isFieldEditable('holderPhone') && !isFieldEditable('HolderPhone')" /></el-form-item></el-col>
+        </el-row>
+        <el-form-item :label="keyLabels.remark?.label || keyLabels.Remark?.label || '备注'"><el-input v-model="form.remark" type="textarea" placeholder="请输入备注" :disabled="!isFieldEditable('remark') && !isFieldEditable('Remark')" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>

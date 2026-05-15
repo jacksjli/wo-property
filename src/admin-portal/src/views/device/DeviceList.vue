@@ -6,6 +6,7 @@ import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import { masterApi } from '@/api/http'
+import { useFieldConfig } from '@/composables/useFieldConfig'
 
 // 权限验证
 const { verifyAdminPassword } = usePermission()
@@ -13,6 +14,15 @@ const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
 
 // 获取启用的字段
 const getDeviceFields = () => getActiveFields('device')
+
+// 字段配置（alias 优先的 label + isEditable 控制）
+const { fetchFieldConfig } = useFieldConfig()
+const deviceLabels = ref<Record<string, any>>({})
+
+// 获取某字段是否可编辑
+const isFieldEditable = (fieldKey: string): boolean => {
+  return deviceLabels.value[fieldKey]?.isEditable ?? true
+}
 
 // 打开字段配置（需要管理员验证）
 const openFieldConfig = async () => {
@@ -312,8 +322,11 @@ const handleRefresh = () => {
   ElMessage.success('已刷新')
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadData()
+  // 加载字段配置（alias 优先的 label + isEditable 控制）
+  const config = await fetchFieldConfig('device')
+  if (config) deviceLabels.value = config
 })
 </script>
 
@@ -381,14 +394,14 @@ onMounted(() => {
 
       <!-- 设备列表 -->
       <el-table :data="filteredDevices" stripe v-loading="loading" @row-click="handleView">
-        <el-table-column prop="deviceCode" label="设备编号" width="120" />
-        <el-table-column prop="deviceName" label="设备名称" min-width="150" />
-        <el-table-column prop="deviceTypeName" label="类型" width="100" align="center">
+        <el-table-column prop="deviceCode" :label="deviceLabels.deviceCode?.label || '设备编号'" width="120" />
+        <el-table-column prop="deviceName" :label="deviceLabels.deviceName?.label || '设备名称'" min-width="150" />
+        <el-table-column prop="deviceTypeName" :label="deviceLabels.deviceType?.label || '类型'" width="100" align="center">
           <template #default="{ row }">
             <el-tag size="small">{{ row.deviceTypeName || deviceTypeLabels[row.deviceType] || '其他' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="location" label="位置" width="120" />
+        <el-table-column prop="location" :label="deviceLabels.location?.label || '位置'" width="120" />
         <el-table-column prop="status" label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
@@ -396,12 +409,12 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="inspectionCycle" label="巡检周期" width="100" align="center">
+        <el-table-column prop="inspectionCycle" :label="deviceLabels.inspectionCycle?.label || '巡检周期'" width="100" align="center">
           <template #default="{ row }">
             {{ inspectionCycleLabels[row.inspectionCycle] || row.inspectionCycle }}
           </template>
         </el-table-column>
-        <el-table-column prop="nextMaintenanceDate" label="下次保养" width="110" align="center">
+        <el-table-column prop="nextMaintenanceDate" :label="deviceLabels.nextMaintenanceDate?.label || '下次保养'" width="110" align="center">
           <template #default="{ row }">
             {{ row.nextMaintenanceDate ? row.nextMaintenanceDate.split('T')[0] : '-' }}
           </template>
@@ -424,41 +437,41 @@ onMounted(() => {
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="650px">
       <el-form label-width="100px">
-        <el-form-item label="设备编号" required>
-          <el-input v-model="form.deviceCode" placeholder="如：CAM-001" />
+        <el-form-item :label="deviceLabels.deviceCode?.label || '设备编号'" required>
+          <el-input v-model="form.deviceCode" placeholder="如：CAM-001" :disabled="!isFieldEditable('deviceCode')" />
         </el-form-item>
-        <el-form-item label="设备名称" required>
-          <el-input v-model="form.deviceName" placeholder="请输入设备名称" />
+        <el-form-item :label="deviceLabels.deviceName?.label || '设备名称'" required>
+          <el-input v-model="form.deviceName" placeholder="请输入设备名称" :disabled="!isFieldEditable('deviceName')" />
         </el-form-item>
-        <el-form-item label="设备类型">
-          <el-select v-model="form.deviceType" style="width: 100%">
+        <el-form-item :label="deviceLabels.deviceType?.label || '设备类型'">
+          <el-select v-model="form.deviceType" style="width: 100%" :disabled="!isFieldEditable('deviceType')">
             <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="型号">
-          <el-input v-model="form.model" placeholder="请输入型号" />
+        <el-form-item :label="deviceLabels.model?.label || '型号'">
+          <el-input v-model="form.model" placeholder="请输入型号" :disabled="!isFieldEditable('model')" />
         </el-form-item>
-        <el-form-item label="制造商">
-          <el-input v-model="form.manufacturer" placeholder="请输入制造商" />
+        <el-form-item :label="deviceLabels.manufacturer?.label || '制造商'">
+          <el-input v-model="form.manufacturer" placeholder="请输入制造商" :disabled="!isFieldEditable('manufacturer')" />
         </el-form-item>
-        <el-form-item label="安装位置" required>
-          <el-input v-model="form.location" placeholder="如：A栋大堂" />
+        <el-form-item :label="deviceLabels.location?.label || '安装位置'" required>
+          <el-input v-model="form.location" placeholder="如：A栋大堂" :disabled="!isFieldEditable('location')" />
         </el-form-item>
-        <el-form-item label="安装日期">
-          <el-date-picker v-model="form.installDate" type="date" style="width: 100%" />
+        <el-form-item :label="deviceLabels.installDate?.label || '安装日期'">
+          <el-date-picker v-model="form.installDate" type="date" style="width: 100%" :disabled="!isFieldEditable('installDate')" />
         </el-form-item>
-        <el-form-item label="设备状态">
-          <el-select v-model="form.status" style="width: 100%">
+        <el-form-item :label="deviceLabels.status?.label || '设备状态'">
+          <el-select v-model="form.status" style="width: 100%" :disabled="!isFieldEditable('status')">
             <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="巡检周期">
-          <el-select v-model="form.inspectionCycle" style="width: 100%">
+        <el-form-item :label="deviceLabels.inspectionCycle?.label || '巡检周期'">
+          <el-select v-model="form.inspectionCycle" style="width: 100%" :disabled="!isFieldEditable('inspectionCycle')">
             <el-option v-for="opt in cycleOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
+        <el-form-item :label="deviceLabels.remark?.label || '备注'">
+          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" :disabled="!isFieldEditable('remark')" />
         </el-form-item>
       </el-form>
       <template #footer>

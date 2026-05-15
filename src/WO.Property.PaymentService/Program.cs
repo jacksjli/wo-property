@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,8 +12,13 @@ using WO.Property.PaymentService.Models;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://0.0.0.0:5026");
-builder.Services.AddDbContext<PaymentDbContext>(opts => opts.UseNpgsql("Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+builder.WebHost.UseUrls("http://0.0.0.0:5007");
+builder.Services.AddDbContext<PaymentDbContext>(options =>
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var jwtKey = jwtSettings["SecretKey"] ?? JwtHelper.GetSecretKey();
 var jwtIssuer = jwtSettings["Issuer"] ?? "wo-property-unified-auth";
@@ -39,11 +46,11 @@ builder.Services.AddCors(options => options.AddPolicy("AllowFrontend", policy =>
     policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
 }));
 var app = builder.Build();
-using (var scope = app.Services.CreateScope()) scope.ServiceProvider.GetRequiredService<PaymentDbContext>().Database.EnsureCreated();
+// EnsureCreated removed - tables already exist in MySQL (2026-05-15)
 app.UseCors("AllowFrontend");
 app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "PaymentService", timestamp = DateTime.UtcNow }));
-Console.WriteLine("PaymentService Port: 5505");
+Console.WriteLine("PaymentService Port: 5007");
 app.Run();
 
 [ApiController]

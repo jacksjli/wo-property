@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import {
@@ -10,10 +10,22 @@ import {
   toggleTicketTypeStatus,
   ticketTypeExists,
   resetTicketTypes,
+  fetchFromApi,
   type TicketType
 } from '@/stores/ticketType'
 
-const typeList = ref<TicketType[]>(getAllTicketTypes())
+const typeList = ref<TicketType[]>([])
+
+onMounted(async () => {
+  console.log('[TicketType] 开始加载工单类型...')
+  try {
+    await fetchFromApi()
+    typeList.value = getAllTicketTypes()
+    console.log('[TicketType] typeList 已设置:', typeList.value)
+  } catch (e) {
+    console.error('[TicketType] 加载失败:', e)
+  }
+})
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增类型')

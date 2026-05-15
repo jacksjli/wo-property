@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -30,7 +32,12 @@ builder.Services.AddCors(options =>
 
 // 添加数据库上下文
 builder.Services.AddDbContext<NotificationDbContext>(options =>
-    options.UseNpgsql(Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") ?? "Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4;AllowUserVariables=true;UseAffectedRows=false";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
+
 
 // 添加JWT认证
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -535,7 +542,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.Run("http://0.0.0.0:5005");
+app.Run();
 
 // 数据库上下文
 public class NotificationDbContext : DbContext

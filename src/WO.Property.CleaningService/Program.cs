@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,10 +11,14 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5021");
+builder.WebHost.UseUrls("http://0.0.0.0:5016");
 
 builder.Services.AddDbContext<CleaningDbContext>(options =>
-    options.UseNpgsql("Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
 
 // JWT 配置 - 使用统一认证配置
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -50,11 +56,6 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<CleaningDbContext>();
-    context.Database.EnsureCreated();
-}
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
@@ -65,7 +66,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "CleaningService", port = 5506 }));
 
 Console.WriteLine("========================================");
-Console.WriteLine("  CleaningService running on :5506");
+Console.WriteLine("  CleaningService running on :5016");
 Console.WriteLine("========================================");
 
 app.Run();

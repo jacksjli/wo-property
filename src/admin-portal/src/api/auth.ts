@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { getServiceUrl } from './config';
 
-// Auth 服务基础 URL
-const AUTH_BASE_URL = 'http://localhost:5006'
+// Auth 服务基础 URL - 通过 Gateway
+const AUTH_BASE_URL = getServiceUrl('auth');
 
 // 创建统一认证服务HTTP客户端
 const authHttp = axios.create({

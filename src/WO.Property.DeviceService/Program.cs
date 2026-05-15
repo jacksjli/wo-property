@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -29,7 +31,11 @@ builder.Services.AddCors(options =>
 
 // 添加数据库上下文
 builder.Services.AddDbContext<DeviceDbContext>(options =>
-    options.UseNpgsql("Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
 
 // 使用统一JWT配置
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -246,109 +252,6 @@ app.MapGet("/api/devices/statistics", [Authorize] async (DeviceDbContext db) =>
     });
 });
 
-// 初始化数据库
-using (var scope = app.Services.CreateScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<DeviceDbContext>();
-    dbContext.Database.EnsureCreated();
-    
-    // 添加初始数据（如果不存在）
-    if (!dbContext.DeviceCategories.Any())
-    {
-        dbContext.DeviceCategories.AddRange(
-            new DeviceCategory { Name = "空调系统", Code = "AC", Description = "中央空调、分体空调等" },
-            new DeviceCategory { Name = "电气设备", Code = "ELEC", Description = "配电箱、照明、插座等" },
-            new DeviceCategory { Name = "电梯设备", Code = "ELEV", Description = "客梯、货梯、扶梯等" },
-            new DeviceCategory { Name = "给排水系统", Code = "PLUMB", Description = "水泵、水管、水箱等" },
-            new DeviceCategory { Name = "消防系统", Code = "FIRE", Description = "灭火器、喷淋、报警等" },
-            new DeviceCategory { Name = "安防系统", Code = "SEC", Description = "监控、门禁、对讲等" },
-            new DeviceCategory { Name = "网络设备", Code = "NET", Description = "路由器、交换机、AP等" },
-            new DeviceCategory { Name = "办公设备", Code = "OFFICE", Description = "打印机、复印机、电脑等" }
-        );
-        await dbContext.SaveChangesAsync();
-    }
-    
-    if (!dbContext.Locations.Any())
-    {
-        dbContext.Locations.AddRange(
-            new Location { Name = "A栋", Type = "Building", ParentId = null },
-            new Location { Name = "B栋", Type = "Building", ParentId = null },
-            new Location { Name = "1楼", Type = "Floor", ParentId = 1 },
-            new Location { Name = "2楼", Type = "Floor", ParentId = 1 },
-            new Location { Name = "101办公室", Type = "Room", ParentId = 3 },
-            new Location { Name = "201会议室", Type = "Room", ParentId = 4 }
-        );
-        await dbContext.SaveChangesAsync();
-    }
-    
-    if (!dbContext.Devices.Any())
-    {
-        dbContext.Devices.AddRange(
-            new Device
-            {
-                Code = "AC-001",
-                Name = "中央空调主机",
-                Model = "格力GMV-280W",
-                SerialNumber = "SN-AC-2024-001",
-                CategoryId = 1,
-                LocationId = 5,
-                PurchaseDate = new DateTime(2024, 1, 15),
-                WarrantyEndDate = new DateTime(2027, 1, 15),
-                Status = "Active",
-                CurrentStatus = "Normal",
-                Notes = "机房主要制冷设备"
-            },
-            new Device
-            {
-                Code = "ELEC-001",
-                Name = "主配电箱",
-                Model = "ABB S260",
-                SerialNumber = "SN-ELEC-2024-001",
-                CategoryId = 2,
-                LocationId = 5,
-                PurchaseDate = new DateTime(2024, 2, 10),
-                WarrantyEndDate = new DateTime(2027, 2, 10),
-                Status = "Active",
-                CurrentStatus = "Normal",
-                Notes = "主要电力分配设备"
-            },
-            new Device
-            {
-                Code = "OFFICE-001",
-                Name = "彩色激光打印机",
-                Model = "HP Color LaserJet Pro",
-                SerialNumber = "SN-OFFICE-2024-001",
-                CategoryId = 8,
-                LocationId = 6,
-                PurchaseDate = new DateTime(2024, 3, 5),
-                WarrantyEndDate = new DateTime(2026, 3, 5),
-                Status = "Active",
-                CurrentStatus = "Normal",
-                Notes = "行政部主要打印设备"
-            }
-        );
-        await dbContext.SaveChangesAsync();
-    }
-    
-    if (!dbContext.MaintenanceRecords.Any())
-    {
-        dbContext.MaintenanceRecords.Add(
-            new MaintenanceRecord
-            {
-                DeviceId = 1,
-                MaintenanceType = "季度例行维护",
-                MaintenanceDate = DateTime.UtcNow.AddDays(-30),
-                Description = "清洁滤网，检查制冷剂压力",
-                Technician = "张师傅",
-                Cost = 500.00m,
-                Hours = 2,
-                Notes = "设备运行正常",
-                CreatedAt = DateTime.UtcNow.AddDays(-30)
-            }
-        );
-        await dbContext.SaveChangesAsync();
-    }
-}
 
 // 输出服务信息
 Console.WriteLine("=== 设备管理服务（统一认证版）===");
@@ -356,7 +259,7 @@ Console.WriteLine($"服务地址: http://localhost:5007");
 Console.WriteLine($"JWT配置: Issuer={issuer}, Audience={audience}");
 Console.WriteLine("=== 服务已启动 ===");
 
-app.Run("http://0.0.0.0:5007");
+app.Run();
 
 // 数据库上下文
 public class DeviceDbContext : DbContext

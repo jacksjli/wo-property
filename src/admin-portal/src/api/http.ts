@@ -146,7 +146,7 @@ const createHttpClient = (baseURL: string) => {
 // 导出各服务API客户端
 export const authApi = createHttpClient(getServiceUrl('auth'))
 export const ticketApi = createHttpClient(getServiceUrl('ticket'))
-export const materialApi = createHttpClient('http://localhost:5019/api');
+// MaterialService via Gateway /api/materials
 export const notificationApi = createHttpClient(getServiceUrl('notification'))
 export const contractApi = createHttpClient(getServiceUrl('contract'))
 export const financeApi = createHttpClient(getServiceUrl('finance'))
@@ -168,7 +168,7 @@ export const paymentApi = createHttpClient(getServiceUrl('payment'))
 export const projectConfigApi = createHttpClient(getServiceUrl('projectConfig'))
 export const renovationApi = createHttpClient(getServiceUrl('renovation'))
 // All services route through API Gateway (port 5000)
-// MasterDataService: /api/master-data/* -> http://localhost:5019/api/*
+export const personApi = createHttpClient(getServiceUrl('person'))
 export const masterApi = createHttpClient('http://localhost:5000/api/master-data')
 // Alias for backward compatibility
 export const departmentApi = masterApi

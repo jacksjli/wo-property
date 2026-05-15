@@ -7,7 +7,7 @@ import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import {
   getAllTimeoutRules,
-  updateTimeoutRule,
+  updateTimeoutRuleById,
   resetTimeoutRules,
   timeoutColorLabels,
   timeoutColorTags,
@@ -59,14 +59,14 @@ const handleUpdateHours = (rule: TimeoutRule, newHours: number) => {
     ElMessage.warning('超时时间不能小于1小时')
     return
   }
-  updateTimeoutRule(rule.id, { hours: newHours })
+  updateTimeoutRuleById(rule.id, { hours: newHours })
   timeoutRules.value = getAllTimeoutRules()
   ElMessage.success('超时时间已更新')
 }
 
 // 切换启用状态
 const handleToggle = (rule: TimeoutRule) => {
-  updateTimeoutRule(rule.id, { enabled: !rule.enabled })
+  updateTimeoutRuleById(rule.id, { enabled: !rule.enabled })
   timeoutRules.value = getAllTimeoutRules()
   ElMessage.success(`已${rule.enabled ? '禁用' : '启用'}`)
 }
@@ -100,7 +100,7 @@ const applyStandardConfig = () => {
       const rule = getRule(c, r)
       if (rule) {
         const hours = c === 'red' ? 4 : c === 'orange' ? 24 : c === 'blue' ? 48 : 72
-        updateTimeoutRule(rule.id, { hours })
+        updateTimeoutRuleById(rule.id, { hours })
       }
     })
   })
@@ -115,7 +115,7 @@ const applyCompactConfig = () => {
       const rule = getRule(c, r)
       if (rule) {
         const hours = c === 'red' ? 2 : c === 'orange' ? 12 : c === 'blue' ? 24 : 48
-        updateTimeoutRule(rule.id, { hours, enabled: true })
+        updateTimeoutRuleById(rule.id, { hours, enabled: true })
       }
     })
   })
@@ -130,7 +130,7 @@ const applyRelaxedConfig = () => {
       const rule = getRule(c, r)
       if (rule) {
         const hours = c === 'red' ? 8 : c === 'orange' ? 48 : c === 'blue' ? 72 : 120
-        updateTimeoutRule(rule.id, { hours, enabled: true })
+        updateTimeoutRuleById(rule.id, { hours, enabled: true })
       }
     })
   })

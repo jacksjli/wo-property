@@ -1,3 +1,6 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -60,7 +63,11 @@ builder.Services.AddCors(options =>
 
 // 添加数据库上下文
 builder.Services.AddDbContext<MaterialDbContext>(options =>
-    options.UseNpgsql(Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") ?? "Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4;AllowUserVariables=true;UseAffectedRows=false";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
 
 // 使用统一JWT配置（与统一认证服务一致）
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -361,7 +368,7 @@ Log.Information("=== Material Service (Unified Auth) Started ===");
 Log.Information("Service URL: http://localhost:5004");
 Log.Information("JWT: Issuer={Issuer}, Audience={Audience}", issuer, audience);
 
-app.Run("http://0.0.0.0:5004");
+app.Run();
 
 // 数据库上下文
 public class MaterialDbContext : DbContext

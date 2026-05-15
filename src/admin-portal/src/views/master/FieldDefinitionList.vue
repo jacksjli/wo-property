@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Refresh, Search } from '@element-plus/icons-vue'
 import { masterApi } from '@/api/http'
+import { masterDataApi } from '@/api/masterDataService'
 
 // ============ 类型定义 ============
 interface FieldDefinition {
@@ -20,15 +21,30 @@ interface FieldDefinition {
   sort?: number
 }
 
+interface FieldDefinitionWithEquivalents extends FieldDefinition {
+  equivalentGroup?: string     // 所在等价组 key，如 "person_name"
+  equivalentCount: number      // 该组有多少个成员（含自己）
+  equivalentMembers?: string[] // 同组所有成员
+}
+
+// ============ 等价组数据类型 ============
+// 等价组: { "person_name": ["name","visitorName",...], ... }
+type EquivalentGroups = Record<string, string[]>
+
 // ============ 数据状态 ============
 const loading = ref(false)
-const list = ref<FieldDefinition[]>([])
+const list = ref<FieldDefinitionWithEquivalents[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增字段')
 const editingId = ref<number | null>(null)
 const submitting = ref(false)
 const filterCategory = ref('')
 const filterKeyword = ref('')
+
+// 等价组相关
+const equivalentGroups = ref<EquivalentGroups>({})
+const filterEquivalents = ref<'all' | 'has' | 'none'>('all')  // 分组筛选
+const expandedGroups = ref<Set<string>>(new Set())
 
 // ============ 常量 ============
 const dataTypeOptions = [
@@ -55,6 +71,13 @@ const moduleOptions = [
   { value: 'material', label: '物料' }
 ]
 
+// 等价组筛选选项
+const equivalentFilterOptions = [
+  { value: 'all', label: '全部' },
+  { value: 'has', label: '已有别名' },
+  { value: 'none', label: '暂无别名' }
+]
+
 // ============ 计算属性 ============
 const filteredList = computed(() => {
   return list.value.filter(f => {
@@ -63,7 +86,11 @@ const filteredList = computed(() => {
       f.code.includes(filterKeyword.value) ||
       f.name.includes(filterKeyword.value) ||
       (f.aliases || '').includes(filterKeyword.value)
-    return matchCat && matchKw
+    const matchEq =
+      filterEquivalents.value === 'all' ||
+      (filterEquivalents.value === 'has' && f.equivalentCount > 1) ||
+      (filterEquivalents.value === 'none' && f.equivalentCount <= 1)
+    return matchCat && matchKw && matchEq
   })
 })
 
@@ -83,6 +110,17 @@ const formatAliases = (aliasStr?: string): string => {
   return arr.length > 0 ? arr.join('、') : '—'
 }
 
+// 点击等价组展开/折叠
+const toggleGroup = (code: string) => {
+  if (expandedGroups.value.has(code)) {
+    expandedGroups.value.delete(code)
+  } else {
+    expandedGroups.value.add(code)
+  }
+}
+
+const isGroupExpanded = (code: string) => expandedGroups.value.has(code)
+
 // ============ 加载数据 ============
 const loadFields = async () => {
   loading.value = true
@@ -96,6 +134,51 @@ const loadFields = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// 加载等价组关系
+const loadEquivalentGroups = async () => {
+  try {
+    const res = await masterDataApi.getFieldEquivalentGroups()
+    if (res.data?.success) {
+      equivalentGroups.value = res.data.data || {}
+      // 为每个字段注入等价组信息
+      enrichFieldsWithEquivalents()
+    }
+  } catch {
+    // 等价组加载失败不影响主流程
+    console.warn('加载等价组失败')
+  }
+}
+
+// 根据等价组数据 enrichment list
+const enrichFieldsWithEquivalents = () => {
+  // 建立 fieldCode -> groupKey 的反向索引
+  const codeToGroup: Record<string, string> = {}
+  for (const [groupKey, members] of Object.entries(equivalentGroups.value)) {
+    for (const code of members) {
+      codeToGroup[code] = groupKey
+    }
+  }
+
+  list.value = list.value.map(f => {
+    const groupKey = codeToGroup[f.code]
+    if (groupKey) {
+      const members = equivalentGroups.value[groupKey] || []
+      return {
+        ...f,
+        equivalentGroup: groupKey,
+        equivalentCount: members.length,
+        equivalentMembers: members
+      } as FieldDefinitionWithEquivalents
+    }
+    return {
+      ...f,
+      equivalentGroup: undefined,
+      equivalentCount: 1,
+      equivalentMembers: [f.code]
+    } as FieldDefinitionWithEquivalents
+  })
 }
 
 // ============ 表单 ============
@@ -167,7 +250,7 @@ const handleSubmit = async () => {
       ElMessage.success('添加成功')
     }
     dialogVisible.value = false
-    loadFields()
+    loadFields().then(loadEquivalentGroups)
   } catch (e: any) {
     ElMessage.error(e.message || '操作失败')
   } finally {
@@ -185,7 +268,7 @@ const handleDelete = async (row: FieldDefinition) => {
     const res: any = await masterApi.delete(`/field-definitions/${row.id}`)
     if (res.success) {
       ElMessage.success('删除成功')
-      loadFields()
+      loadFields().then(loadEquivalentGroups)
     }
   } catch {
     // 用户取消
@@ -200,8 +283,9 @@ const getDataTypeLabel = (dt: string) => {
   return dataTypeOptions.find(o => o.value === dt)?.label || dt
 }
 
-onMounted(() => {
-  loadFields()
+onMounted(async () => {
+  await loadFields()
+  await loadEquivalentGroups()
 })
 </script>
 
@@ -211,8 +295,8 @@ onMounted(() => {
     <div class="page-header">
       <h2>字段管理</h2>
       <div class="header-actions">
-        <el-button :icon="Refresh" @click="loadFields">刷新</el-button>
-        <el-button type="primary" :icon="Plus" @click="handleAdd">新增字段</el-button>
+        <el-button :icon="Refresh" @click="loadFields().then(loadEquivalentGroups)">刷新</el-button>
+        <el-button type="primary" :icon="Plus" @click="handleAdd">新增标准字段</el-button>
       </div>
     </div>
 
@@ -220,6 +304,9 @@ onMounted(() => {
     <div class="filter-bar">
       <el-select v-model="filterCategory" placeholder="字段类别" clearable style="width:140px">
         <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
+      </el-select>
+      <el-select v-model="filterEquivalents" placeholder="别名筛选" style="width:140px">
+        <el-option v-for="o in equivalentFilterOptions" :key="o.value" :label="o.label" :value="o.value" />
       </el-select>
       <el-input v-model="filterKeyword" placeholder="搜索编码/名称/别名" clearable style="width:200px">
         <template #prefix><el-icon><Search /></el-icon></template>
@@ -241,9 +328,43 @@ onMounted(() => {
         </template>
       </el-table-column>
       <el-table-column prop="name" label="标准名称" width="120" />
-      <el-table-column label="别名（各场景）" min-width="220">
+      <el-table-column label="别名（各场景）" min-width="160">
         <template #default="{ row }">
           <span style="color:#67C23A;font-size:13px">{{ formatAliases(row.aliases) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="等价组" width="140" align="center">
+        <template #default="{ row }">
+          <template v-if="row.equivalentCount > 1">
+            <el-tag
+              type="warning"
+              size="small"
+              style="cursor:pointer"
+              @click.stop="toggleGroup(row.code)"
+            >
+              {{ row.equivalentGroup }} ({{ row.equivalentCount }})
+              <span style="margin-left:4px">{{ isGroupExpanded(row.code) ? '▲' : '▼' }}</span>
+            </el-tag>
+          </template>
+          <template v-else>
+            <span style="color:#C0C4CC;font-size:12px">—</span>
+          </template>
+        </template>
+      </el-table-column>
+      <el-table-column label="同组别名" min-width="200">
+        <template #default="{ row }">
+          <template v-if="isGroupExpanded(row.code) && row.equivalentMembers">
+            <el-tag
+              v-for="member in row.equivalentMembers"
+              :key="member"
+              :type="member === row.code ? 'primary' : 'info'"
+              size="small"
+              style="margin-right:4px;margin-bottom:2px"
+            >
+              {{ member }}
+            </el-tag>
+          </template>
+          <span v-else style="color:#C0C4CC;font-size:12px">点击"等价组"展开查看</span>
         </template>
       </el-table-column>
       <el-table-column prop="dataType" label="数据类型" width="100" align="center">
@@ -268,7 +389,7 @@ onMounted(() => {
           <el-tag :type="row.isRequired ? 'danger' : 'info'" size="small">{{ row.isRequired ? '是' : '否' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+      <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip />
       <el-table-column label="状态" width="80" align="center">
         <template #default="{ row }">
           <el-tag :type="row.isActive ? 'success' : 'danger'" size="small">{{ row.isActive ? '启用' : '停用' }}</el-tag>

@@ -6,11 +6,21 @@ import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
 import { masterApi } from '@/api/http'
+import { useFieldConfig } from '@/composables/useFieldConfig'
 
 const { verifyAdminPassword } = usePermission()
 const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
 
 const getMaterialFields = () => getActiveFields('material')
+
+// 字段配置（alias 优先的 label + isEditable 控制）
+const { fetchFieldConfig } = useFieldConfig()
+const materialLabels = ref<Record<string, any>>({})
+
+// 获取某字段是否可编辑
+const isFieldEditable = (fieldKey: string): boolean => {
+  return materialLabels.value[fieldKey]?.isEditable ?? true
+}
 
 const openFieldConfig = async () => {
   const verified = await verifyAdminPassword()
@@ -108,7 +118,12 @@ const loadData = async () => {
   }
 }
 
-onMounted(() => loadData())
+onMounted(async () => {
+  await loadData()
+  // 加载字段配置（alias 优先的 label + isEditable 控制）
+  const config = await fetchFieldConfig('material')
+  if (config) materialLabels.value = config
+})
 
 const handleAdd = () => {
   editingId.value = null
@@ -255,12 +270,12 @@ const formatPrice = (p: number) => `¥${(p || 0).toFixed(2)}`
 
       <!-- 数据列表 -->
       <el-table :data="filteredList" stripe v-loading="loading">
-        <el-table-column prop="MaterialNo" label="物料编号" width="110" />
-        <el-table-column prop="Name" label="物料名称" min-width="120" />
-        <el-table-column prop="Category" label="分类" width="100" align="center">
+        <el-table-column prop="MaterialNo" :label="materialLabels.materialNo?.label || materialLabels.MaterialNo?.label || '物料编号'" width="110" />
+        <el-table-column prop="Name" :label="materialLabels.name?.label || materialLabels.Name?.label || '物料名称'" min-width="120" />
+        <el-table-column prop="Category" :label="materialLabels.category?.label || materialLabels.Category?.label || '分类'" width="100" align="center">
           <template #default="{ row }"><el-tag size="small">{{ getCategoryLabel(row.Category) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="Spec" label="规格" width="120" />
+        <el-table-column prop="Spec" :label="materialLabels.spec?.label || materialLabels.Spec?.label || '规格'" width="120" />
         <el-table-column prop="Quantity" label="库存" width="80" align="center">
           <template #default="{ row }">
             <span :style="{ color: row.Quantity != null && row.MinQuantity != null && row.Quantity <= row.MinQuantity ? '#F56C6C' : '#67C23A' }">{{ row.Quantity }} {{ row.Unit }}</span>
@@ -287,25 +302,25 @@ const formatPrice = (p: number) => `¥${(p || 0).toFixed(2)}`
     <!-- 新增/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="650px">
       <el-form label-width="100px">
-        <el-form-item label="物料编号" required><el-input v-model="form.materialNo" placeholder="如：MAT-001" /></el-form-item>
-        <el-form-item label="物料名称" required><el-input v-model="form.name" placeholder="请输入物料名称" /></el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="form.category" style="width: 100%">
+        <el-form-item :label="materialLabels.materialNo?.label || materialLabels.MaterialNo?.label || '物料编号'" required><el-input v-model="form.materialNo" placeholder="如：MAT-001" :disabled="!isFieldEditable('materialNo') && !isFieldEditable('MaterialNo')" /></el-form-item>
+        <el-form-item :label="materialLabels.name?.label || materialLabels.Name?.label || '物料名称'" required><el-input v-model="form.name" placeholder="请输入物料名称" :disabled="!isFieldEditable('name') && !isFieldEditable('Name')" /></el-form-item>
+        <el-form-item :label="materialLabels.category?.label || materialLabels.Category?.label || '分类'">
+          <el-select v-model="form.category" style="width: 100%" :disabled="!isFieldEditable('category') && !isFieldEditable('Category')">
             <el-option v-for="opt in categoryOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="规格型号"><el-input v-model="form.spec" placeholder="请输入规格型号" /></el-form-item>
+        <el-form-item :label="materialLabels.spec?.label || materialLabels.Spec?.label || '规格型号'"><el-input v-model="form.spec" placeholder="请输入规格型号" :disabled="!isFieldEditable('spec') && !isFieldEditable('Spec')" /></el-form-item>
         <el-form-item label="单位">
-          <el-select v-model="form.unit" style="width: 100%">
+          <el-select v-model="form.unit" style="width: 100%" :disabled="!isFieldEditable('unit')">
             <el-option v-for="u in ['个','件','套','米','升','公斤','卷','盒','箱']" :key="u" :label="u" :value="u" />
           </el-select>
         </el-form-item>
-        <el-form-item label="当前库存"><el-input-number v-model="form.quantity" :min="0" style="width: 100%" /></el-form-item>
-        <el-form-item label="最低库存"><el-input-number v-model="form.minQuantity" :min="0" style="width: 100%" /></el-form-item>
-        <el-form-item label="单价"><el-input-number v-model="form.price" :min="0" :precision="2" style="width: 100%" /></el-form-item>
-        <el-form-item label="存放位置"><el-input v-model="form.location" placeholder="如：仓库A区" /></el-form-item>
-        <el-form-item label="供应商"><el-input v-model="form.supplier" placeholder="请输入供应商" /></el-form-item>
-        <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" placeholder="请输入备注" /></el-form-item>
+        <el-form-item label="当前库存"><el-input-number v-model="form.quantity" :min="0" style="width: 100%" :disabled="!isFieldEditable('quantity')" /></el-form-item>
+        <el-form-item label="最低库存"><el-input-number v-model="form.minQuantity" :min="0" style="width: 100%" :disabled="!isFieldEditable('minQuantity')" /></el-form-item>
+        <el-form-item label="单价"><el-input-number v-model="form.price" :min="0" :precision="2" style="width: 100%" :disabled="!isFieldEditable('price')" /></el-form-item>
+        <el-form-item :label="materialLabels.location?.label || materialLabels.Location?.label || '存放位置'"><el-input v-model="form.location" placeholder="如：仓库A区" :disabled="!isFieldEditable('location') && !isFieldEditable('Location')" /></el-form-item>
+        <el-form-item :label="materialLabels.supplier?.label || materialLabels.Supplier?.label || '供应商'"><el-input v-model="form.supplier" placeholder="请输入供应商" :disabled="!isFieldEditable('supplier') && !isFieldEditable('Supplier')" /></el-form-item>
+        <el-form-item :label="materialLabels.remark?.label || materialLabels.Remark?.label || '备注'"><el-input v-model="form.remark" type="textarea" placeholder="请输入备注" :disabled="!isFieldEditable('remark') && !isFieldEditable('Remark')" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>

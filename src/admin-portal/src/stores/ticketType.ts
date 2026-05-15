@@ -79,8 +79,8 @@ const loading = ref(false)
 
 let typeIdCounter = 1
 
-// 从 API 加载数据
-const fetchFromApi = async () => {
+// 从 API 加载数据（导出供组件使用）
+export const fetchFromApi = async () => {
   loading.value = true
   try {
     const response = await ticketTypeApi.getAll()

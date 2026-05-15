@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -23,7 +25,11 @@ builder.Services.AddControllers()
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySQL("Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=5;Maximum Pool Size=50;Connection Timeout=10;"));
+{
+    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4";
+    var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
+    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+});
 
 // PersonService HttpClient
 builder.Services.AddHttpClient("PersonService", client =>
@@ -85,11 +91,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    context.Database.EnsureCreated();
-}
 
 app.UseCors("AllowAdminPortal");
 app.UseAuthorization();
@@ -112,6 +113,7 @@ public class AppDbContext : DbContext
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<TicketProcessRecord> TicketProcessRecords => Set<TicketProcessRecord>();
     public DbSet<DispatchTask> DispatchTasks => Set<DispatchTask>();
+    public DbSet<TicketTypeEntity> TicketTypes => Set<TicketTypeEntity>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -169,6 +171,21 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(20);
             entity.HasIndex(e => e.TicketId);
         });
+
+        modelBuilder.Entity<TicketTypeEntity>(entity =>
+        {
+            entity.ToTable("ticket_types");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Code).HasMaxLength(50);
+            entity.Property(e => e.Icon).HasMaxLength(50);
+            entity.Property(e => e.Color).HasMaxLength(20);
+            entity.Property(e => e.Status).HasMaxLength(20);
+            entity.Property(e => e.SortOrder).HasDefaultValue(0);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.Property(e => e.SortOrder).HasColumnName("sort_order");
+        });
     }
 }
 
@@ -213,6 +230,19 @@ public class DispatchTask : BaseEntity
     public string Status { get; set; } = "pending";
     public DateTime? TimeoutAt { get; set; }
     public string? Notes { get; set; }
+}
+
+public class TicketTypeEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Code { get; set; }
+    public string? Icon { get; set; }
+    public string? Color { get; set; }
+    public string? Status { get; set; }
+    public int SortOrder { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public static class TicketStatusValues

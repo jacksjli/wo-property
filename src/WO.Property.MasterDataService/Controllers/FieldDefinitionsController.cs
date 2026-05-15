@@ -292,6 +292,24 @@ public class FieldDefinitionsController : ControllerBase
     }
 
     /// <summary>
+    /// 获取所有字段定义（不分页，用于下拉选择等场景）
+    /// </summary>
+    [HttpGet("all")]
+    public async Task<IActionResult> GetAllNoPagination()
+    {
+        var sql = "SELECT * FROM FieldDefinitions WHERE Status = 'Active' ORDER BY Module, SortOrder, Id";
+        using var cmd = new MySqlCommand(sql, _db);
+        var items = new List<FieldDefinitionResponse>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            items.Add(MapToResponse(reader));
+        }
+
+        return Ok(new { Success = true, Data = items, Pagination = new { TotalCount = items.Count } });
+    }
+
+    /// <summary>
     /// 获取所有共享字段
     /// </summary>
     [HttpGet("shared")]

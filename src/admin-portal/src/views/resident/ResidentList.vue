@@ -6,6 +6,7 @@ import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
 import { masterApi } from '@/api/http'
+import { useFieldConfig } from '@/composables/useFieldConfig'
 
 interface Resident {
   id: number
@@ -45,6 +46,15 @@ const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
 
 // 获取启用的字段
 const getResidentFields = () => getActiveFields('resident')
+
+// 字段配置（alias 优先的 label + isEditable 控制）
+const { fetchFieldConfig } = useFieldConfig()
+const residentLabels = ref<Record<string, any>>({})
+
+// 获取某字段是否可编辑
+const isFieldEditable = (fieldKey: string): boolean => {
+  return residentLabels.value[fieldKey]?.isEditable ?? true
+}
 
 // 打开字段配置
 const openFieldConfig = async () => {
@@ -182,8 +192,11 @@ const handleRefresh = () => {
   ElMessage.success('已刷新')
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadData()
+  // 加载字段配置（alias 优先的 label + isEditable 控制）
+  const config = await fetchFieldConfig('resident')
+  if (config) residentLabels.value = config
 })
 </script>
 
@@ -208,17 +221,17 @@ onMounted(() => {
       </template>
 
       <el-table :data="residentList" stripe v-loading="loading">
-        <el-table-column prop="name" label="姓名" width="120">
+        <el-table-column prop="name" :label="residentLabels.name?.label || '姓名'" width="120">
           <template #default="{ row }">
             <span class="name-cell"><el-icon><User /></el-icon> {{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="phone" label="电话" width="130">
+        <el-table-column prop="phone" :label="residentLabels.phone?.label || '电话'" width="130">
           <template #default="{ row }">
             <span><el-icon><Phone /></el-icon> {{ row.phone }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="idCardNumber" label="身份证" width="170">
+        <el-table-column prop="idCardNumber" :label="residentLabels.idCardNumber?.label || '身份证'" width="170">
           <template #default="{ row }">
             {{ row.idCardNumber || '-' }}
           </template>
@@ -228,12 +241,12 @@ onMounted(() => {
             <el-tag type="info" size="small">{{ getUnitDisplay(row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="residentType" label="类型" width="80" align="center">
+        <el-table-column prop="residentType" :label="residentLabels.residentType?.label || '类型'" width="80" align="center">
           <template #default="{ row }">
             <el-tag size="small">{{ getResidentTypeLabel(row.residentType) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="checkInDate" label="入住日期" width="110" align="center">
+        <el-table-column prop="checkInDate" :label="residentLabels.checkInDate?.label || '入住日期'" width="110" align="center">
           <template #default="{ row }">
             {{ row.checkInDate ? row.checkInDate.split('T')[0] : '-' }}
           </template>
@@ -259,28 +272,28 @@ onMounted(() => {
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
       <el-form label-width="90px">
-        <el-form-item label="姓名" required>
-          <el-input v-model="form.name" placeholder="请输入姓名" />
+        <el-form-item :label="residentLabels.name?.label || '姓名'" required>
+          <el-input v-model="form.name" placeholder="请输入姓名" :disabled="!isFieldEditable('name')" />
         </el-form-item>
-        <el-form-item label="电话" required>
-          <el-input v-model="form.phone" placeholder="请输入联系电话" />
+        <el-form-item :label="residentLabels.phone?.label || '电话'" required>
+          <el-input v-model="form.phone" placeholder="请输入联系电话" :disabled="!isFieldEditable('phone')" />
         </el-form-item>
-        <el-form-item label="身份证号">
-          <el-input v-model="form.idCardNumber" placeholder="请输入身份证号" />
+        <el-form-item :label="residentLabels.idCardNumber?.label || '身份证号'">
+          <el-input v-model="form.idCardNumber" placeholder="请输入身份证号" :disabled="!isFieldEditable('idCardNumber')" />
         </el-form-item>
-        <el-form-item label="住户类型">
-          <el-select v-model="form.residentType" style="width: 100%">
+        <el-form-item :label="residentLabels.residentType?.label || '住户类型'">
+          <el-select v-model="form.residentType" style="width: 100%" :disabled="!isFieldEditable('residentType')">
             <el-option label="业主" value="owner" />
             <el-option label="租户" value="tenant" />
             <el-option label="家属" value="family" />
             <el-option label="其他" value="other" />
           </el-select>
         </el-form-item>
-        <el-form-item label="入住日期">
-          <el-date-picker v-model="form.checkInDate" type="date" style="width: 100%" />
+        <el-form-item :label="residentLabels.checkInDate?.label || '入住日期'">
+          <el-date-picker v-model="form.checkInDate" type="date" style="width: 100%" :disabled="!isFieldEditable('checkInDate')" />
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
+        <el-form-item :label="residentLabels.remark?.label || '备注'">
+          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" :disabled="!isFieldEditable('remark')" />
         </el-form-item>
       </el-form>
       <template #footer>

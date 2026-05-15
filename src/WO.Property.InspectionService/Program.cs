@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +20,7 @@ builder.WebHost.UseUrls("http://0.0.0.0:5010");
 
 // 添加数据库
 builder.Services.AddDbContext<InspectionDbContext>(options =>
-    options.UseNpgsql("Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+    options.UseMySql("Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4", ServerVersion.Parse("8.0.35")));
 
 // JWT 配置 - 使用统一认证配置
 var jwtIssuer = "wo-property-unified-auth";
@@ -55,11 +57,6 @@ builder.Services.AddControllers()
 var app = builder.Build();
 
 // 数据库初始化
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<InspectionDbContext>();
-    context.Database.EnsureCreated();
-}
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -6,6 +6,7 @@ import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
 import { masterApi } from '@/api/http'
+import { useFieldConfig } from '@/composables/useFieldConfig'
 
 // 权限验证
 const { verifyAdminPassword } = usePermission()
@@ -13,6 +14,15 @@ const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
 
 // 获取启用的字段
 const getVisitorFields = () => getActiveFields('visitor')
+
+// 字段配置（alias 优先的 label + isEditable 控制）
+const { fetchFieldConfig, getLabel } = useFieldConfig()
+const visitorLabels = ref<Record<string, any>>({})
+
+// 获取某字段是否可编辑
+const isFieldEditable = (fieldKey: string): boolean => {
+  return visitorLabels.value[fieldKey]?.isEditable ?? true
+}
 
 // 打开字段配置
 const openFieldConfig = async () => {
@@ -285,8 +295,11 @@ const handleRefresh = () => {
   ElMessage.success('已刷新')
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadData()
+  // 加载字段配置（alias 优先的 label + isEditable 控制）
+  const config = await fetchFieldConfig('visitor')
+  if (config) visitorLabels.value = config
 })
 </script>
 
@@ -348,31 +361,31 @@ onMounted(() => {
 
       <!-- 访客列表 -->
       <el-table :data="filteredVisitors" stripe v-loading="loading" @row-click="handleView">
-        <el-table-column prop="visitorName" label="访客姓名" width="100" />
-        <el-table-column prop="visitorPhone" label="联系电话" width="120" />
-        <el-table-column prop="visitorType" label="访客类型" width="100" align="center">
+        <el-table-column prop="visitorName" :label="visitorLabels.visitorName?.label || '访客姓名'" width="100" />
+        <el-table-column prop="visitorPhone" :label="visitorLabels.visitorPhone?.label || '联系电话'" width="120" />
+        <el-table-column prop="visitorType" :label="visitorLabels.visitorType?.label || '访客类型'" width="100" align="center">
           <template #default="{ row }">
             <el-tag size="small">{{ visitorTypeLabels[row.visitorType] || '其他' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="hostName" label="被访住户" width="100" align="center" />
-        <el-table-column prop="roomNumber" label="房号" width="90" align="center">
+        <el-table-column prop="hostName" :label="visitorLabels.hostName?.label || '被访住户'" width="100" align="center" />
+        <el-table-column prop="roomNumber" :label="visitorLabels.roomNumber?.label || '房号'" width="90" align="center">
           <template #default="{ row }">
             {{ row.roomNumber || row.residentRoom || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="visitPurpose" label="访问事由" min-width="120" />
-        <el-table-column prop="plateNo" label="车牌" width="100" align="center">
+        <el-table-column prop="visitPurpose" :label="visitorLabels.visitPurpose?.label || '访问事由'" min-width="120" />
+        <el-table-column prop="plateNo" :label="visitorLabels.plateNo?.label || '车牌'" width="100" align="center">
           <template #default="{ row }">
             {{ row.plateNo || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="visitDate" label="访问日期" width="110" align="center">
+        <el-table-column prop="visitDate" :label="visitorLabels.visitDate?.label || '访问日期'" width="110" align="center">
           <template #default="{ row }">
             {{ row.visitDate ? row.visitDate.split('T')[0] : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="visitTime" label="访问时间" width="80" align="center" />
+        <el-table-column prop="visitTime" :label="visitorLabels.visitTime?.label || '访问时间'" width="80" align="center" />
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
@@ -400,25 +413,25 @@ onMounted(() => {
       <el-form label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="访客姓名" required>
-              <el-input v-model="form.visitorName" placeholder="请输入访客姓名" />
+            <el-form-item :label="visitorLabels.visitorName?.label || '访客姓名'" required>
+              <el-input v-model="form.visitorName" placeholder="请输入访客姓名" :disabled="!isFieldEditable('visitorName')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="联系电话" required>
-              <el-input v-model="form.visitorPhone" placeholder="请输入联系电话" />
+            <el-form-item :label="visitorLabels.visitorPhone?.label || '联系电话'" required>
+              <el-input v-model="form.visitorPhone" placeholder="请输入联系电话" :disabled="!isFieldEditable('visitorPhone')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="身份证号">
-              <el-input v-model="form.idCardNumber" placeholder="请输入身份证号" />
+            <el-form-item :label="visitorLabels.idCardNumber?.label || '身份证号'">
+              <el-input v-model="form.idCardNumber" placeholder="请输入身份证号" :disabled="!isFieldEditable('idCardNumber')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="访客类型">
-              <el-select v-model="form.visitorType" style="width: 100%">
+            <el-form-item :label="visitorLabels.visitorType?.label || '访客类型'">
+              <el-select v-model="form.visitorType" style="width: 100%" :disabled="!isFieldEditable('visitorType')">
                 <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
@@ -426,54 +439,54 @@ onMounted(() => {
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="车牌号">
-              <el-input v-model="form.plateNo" placeholder="请输入车牌号" />
+            <el-form-item :label="visitorLabels.plateNo?.label || '车牌号'">
+              <el-input v-model="form.plateNo" placeholder="请输入车牌号" :disabled="!isFieldEditable('plateNo')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="被访住户" required>
-              <el-input v-model="form.hostName" placeholder="请输入被访住户姓名" />
+            <el-form-item :label="visitorLabels.hostName?.label || '被访住户'" required>
+              <el-input v-model="form.hostName" placeholder="请输入被访住户姓名" :disabled="!isFieldEditable('hostName')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="被访电话">
-              <el-input v-model="form.hostPhone" placeholder="请输入被访电话" />
+            <el-form-item :label="visitorLabels.hostPhone?.label || '被访电话'">
+              <el-input v-model="form.hostPhone" placeholder="请输入被访电话" :disabled="!isFieldEditable('hostPhone')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="访问事由" required>
-              <el-input v-model="form.visitPurpose" placeholder="请输入访问事由" />
+            <el-form-item :label="visitorLabels.visitPurpose?.label || '访问事由'" required>
+              <el-input v-model="form.visitPurpose" placeholder="请输入访问事由" :disabled="!isFieldEditable('visitPurpose')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="访问日期">
-              <el-date-picker v-model="form.visitDate" type="date" placeholder="选择日期" style="width: 100%" />
+            <el-form-item :label="visitorLabels.visitDate?.label || '访问日期'">
+              <el-date-picker v-model="form.visitDate" type="date" placeholder="选择日期" style="width: 100%" :disabled="!isFieldEditable('visitDate')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="访问时间">
-              <el-time-picker v-model="form.visitTime" placeholder="选择时间" style="width: 100%" format="HH:mm" value-format="HH:mm:ss" />
+            <el-form-item :label="visitorLabels.visitTime?.label || '访问时间'">
+              <el-time-picker v-model="form.visitTime" placeholder="选择时间" style="width: 100%" format="HH:mm" value-format="HH:mm:ss" :disabled="!isFieldEditable('visitTime')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="同行人数">
-              <el-input v-model="form.companion" placeholder="如：2人" />
+            <el-form-item :label="visitorLabels.companion?.label || '同行人数'">
+              <el-input v-model="form.companion" placeholder="如：2人" :disabled="!isFieldEditable('companion')" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="登记人">
-              <el-input v-model="form.handler" placeholder="请输入登记人" />
+            <el-form-item :label="visitorLabels.handler?.label || '登记人'">
+              <el-input v-model="form.handler" placeholder="请输入登记人" :disabled="!isFieldEditable('handler')" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
+        <el-form-item :label="visitorLabels.remark?.label || '备注'">
+          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" :disabled="!isFieldEditable('remark')" />
         </el-form-item>
       </el-form>
       <template #footer>

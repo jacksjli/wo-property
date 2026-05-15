@@ -1,3 +1,5 @@
+using MySqlConnector;
+using Pomelo.EntityFrameworkCore.MySql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,10 +14,10 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5023");
+builder.WebHost.UseUrls("http://0.0.0.0:5015");
 
 builder.Services.AddDbContext<DeliveryDbContext>(options =>
-    options.UseNpgsql("Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!"));
+    options.UseMySql("Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4", ServerVersion.Parse("8.0.35")));
 
 var jwtIssuer = "wo-property-unified-auth";
 var jwtAudience = "wo-property-services";
@@ -60,11 +62,6 @@ builder.Services.AddCors(options => {
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<DeliveryDbContext>();
-    context.Database.EnsureCreated();
-}
 
 app.UseCors("AllowFrontend");
 
