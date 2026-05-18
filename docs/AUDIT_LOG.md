@@ -50,6 +50,43 @@
 
 ---
 
+
+---
+
+## 2026-05-18 本周审计
+
+### 本周重点模块
+- Phase 0 多物业分库改造（AuthService + TicketService）
+
+### 执行时间
+2026-05-18 09:00
+
+---
+
+## 模块：Phase 0 多物业分库
+
+| 检查项 | 文档描述 | 实际代码 | 偏差 | 严重度 |
+|--------|---------|---------|------|--------|
+| Phase 0 架构文档 | 无（docs/ 下无相关文档） | TenantDbFactory + TenantRoutingMiddleware | 🔴 文档缺失 | 高 |
+| AuthService 多租户 API | 无文档 | JWT 新增 tenant_id/tenant_code/project_ids | 🟡 观察 | 中 |
+| TicketService API | docs/MODULES/ticket/API.md 描述单租户 | 实际为多租户（/api/tenant/tickets） | 🔴 文档过时 | 高 |
+| 租户隔离 | 数据库级隔离 | tenant_a/tenant_b 完全隔离 | ✅ 已执行 | - |
+| 单元测试覆盖 | 无 | 13 个测试通过 | ✅ 已执行 | - |
+| 集成测试覆盖 | 无 | 16 个场景通过 | ✅ 已执行 | - |
+| 分支推送 | 未推送 GitHub | 4 个 commit 本地 | 🟡 观察 | 中 |
+
+**评级：🟡 观察**
+
+**原因：** 核心代码质量良好，租户隔离验证通过，但设计文档严重滞后于实现。
+
+**行动项：**
+- [ ] 创建 Phase 0 架构文档
+- [ ] 标注 docs/MODULES/ticket/API.md 为 DEPRECATED
+- [ ] 推送 feature/multi-tenant 到 GitHub
+- [ ] Phase 1 规划文档
+
+---
+
 ## 下周待审模块
 - PersonService API 契约一致性
 - MasterDataService 字段管理 API
