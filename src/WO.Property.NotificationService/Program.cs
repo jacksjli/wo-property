@@ -10,6 +10,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using BCrypt.Net;
+using WO.Property.NotificationService.Middleware;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -66,6 +67,16 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+builder.Services.AddControllers();
+
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.NotificationService.Tenant.ITenantDbFactory, WO.Property.NotificationService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.NotificationService.Data.TenantDbContext>>(sp =>
+    new WO.Property.NotificationService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.NotificationService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.NotificationService.Data.TenantDbContext>>()
+    ));
 
 var app = builder.Build();
 
@@ -79,6 +90,12 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TenantRoutingMiddleware>();
+
+// ─── Phase 1 租户路由中间件 ───
+app.UseMiddleware<TenantRoutingMiddleware>();
+
+app.MapControllers();
 
 // 健康检查端点
 app.MapGet("/health", () =>
@@ -86,7 +103,7 @@ app.MapGet("/health", () =>
     return Results.Json(new
     {
         status = "healthy",
-        service = "WO通知与报表服务",
+        service = "NotificationService", mode = "Phase 1 multi-tenant",
         version = "1.0.0",
         timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
         features = new[] { "通知管理", "消息推送", "报表生成", "数据分析", "系统公告" }

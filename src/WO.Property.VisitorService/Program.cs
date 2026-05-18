@@ -10,12 +10,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.VisitorService.Data;
 using WO.Property.VisitorService.Models;
+using WO.Property.VisitorService.Middleware;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置端口 - 使用5013端口
-builder.WebHost.UseUrls("http://0.0.0.0:5013");
+builder.WebHost.UseUrls("http://0.0.0.0:5513");
 
 // 添加数据库
 builder.Services.AddDbContext<VisitorDbContext>(options =>
@@ -56,6 +57,15 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.VisitorService.Tenant.ITenantDbFactory, WO.Property.VisitorService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.VisitorService.Data.TenantDbContext>>(sp =>
+    new WO.Property.VisitorService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.VisitorService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.VisitorService.Data.TenantDbContext>>()
+    ));
+
 var app = builder.Build();
 
 // 数据库初始化
@@ -63,9 +73,12 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ─── Phase 1 租户路由中间件 ───
+app.UseMiddleware<TenantRoutingMiddleware>();
+
 app.MapControllers();
 
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "VisitorService", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "VisitorService", mode = "Phase 1 multi-tenant", timestamp = DateTime.UtcNow }));
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Visitor Service");

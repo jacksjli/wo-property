@@ -11,12 +11,13 @@ using System.Text.Json.Serialization;
 using WO.Property.InspectionService.Data;
 using WO.Property.InspectionService.Models;
 using InspectionTaskStatus = WO.Property.InspectionService.Models.TaskStatus;
+using WO.Property.InspectionService.Middleware;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置端口 - 使用5010端口
-builder.WebHost.UseUrls("http://0.0.0.0:5010");
+builder.WebHost.UseUrls("http://0.0.0.0:5510");
 
 // 添加数据库
 builder.Services.AddDbContext<InspectionDbContext>(options =>
@@ -54,17 +55,38 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.InspectionService.Tenant.ITenantDbFactory, WO.Property.InspectionService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.InspectionService.Data.TenantDbContext>>(sp =>
+    new WO.Property.InspectionService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.InspectionService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.InspectionService.Data.TenantDbContext>>()
+    ));
+
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.InspectionService.Tenant.ITenantDbFactory, WO.Property.InspectionService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.InspectionService.Data.TenantDbContext>>(sp =>
+    new WO.Property.InspectionService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.InspectionService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.InspectionService.Data.TenantDbContext>>()
+    ));
+
 var app = builder.Build();
 
-// 数据库初始化
+//// 数据库初始化
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ─── Phase 1 租户路由中间件 ───
+app.UseMiddleware<TenantRoutingMiddleware>();
+
 app.MapControllers();
 
 // 健康检查
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "InspectionService", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "InspectionService", mode = "Phase 1 multi-tenant", timestamp = DateTime.UtcNow }));
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Inspection Service");

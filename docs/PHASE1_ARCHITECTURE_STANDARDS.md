@@ -39,6 +39,8 @@
 - `Data/TenantDbContextFactory.cs` — 自己的数据库连接
 - `Controllers/Tenant*Controller.cs` — 自己的多租户 API
 
+> ⚠️ **JWT tenant_code 提取重要修正**：`JwtSecurityTokenHandler.ReadJwtToken()` 会对 JWT claims 做映射（ClaimAction），导致非标准 claim（`tenant_code`、`project_ids`）丢失。**必须直接 Base64URL 解码 JWT payload** 获取 `tenant_code`。参考 `CleaningService/Middleware/TenantRoutingMiddleware.cs` 的实现。
+
 ### 1.3 API 命名规范
 
 | 接口类型 | 路径 | 说明 |

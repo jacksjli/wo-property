@@ -7,12 +7,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.FinanceService.Data;
+using WO.Property.FinanceService.Middleware;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置端口 - 使用5009端口
-builder.WebHost.UseUrls("http://0.0.0.0:5009");
+builder.WebHost.UseUrls("http://0.0.0.0:5509");
 
 // 添加数据库
 builder.Services.AddDbContext<FinanceDbContext>(options =>
@@ -54,6 +55,15 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
 
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.FinanceService.Tenant.ITenantDbFactory, WO.Property.FinanceService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.FinanceService.Data.TenantDbContext>>(sp =>
+    new WO.Property.FinanceService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.FinanceService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.FinanceService.Data.TenantDbContext>>()
+    ));
+
 // 添加APIExplorer用于开发
 builder.Services.AddEndpointsApiExplorer();
 
@@ -64,14 +74,17 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ─── Phase 1 租户路由中间件 ───
+app.UseMiddleware<TenantRoutingMiddleware>();
+
 app.MapControllers();
 
 // 健康检查
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "FinanceService", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "FinanceService", mode = "Phase 1 multi-tenant", timestamp = DateTime.UtcNow }));
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Finance Service");
-Console.WriteLine("  Port: 5009");
+Console.WriteLine("  Port: 5509");
 Console.WriteLine("===========================================");
 
 app.Run();

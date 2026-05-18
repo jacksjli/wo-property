@@ -14,6 +14,7 @@ using BCrypt.Net;
 using Serilog;
 using Serilog.Events;
 using WO.Property.Shared.Models;
+using WO.Property.MaterialService.Middleware;
 using WO.Property.Shared.Configuration;
 using WO.Property.Shared.Logging;
 
@@ -97,6 +98,16 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+builder.Services.AddControllers();
+
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.MaterialService.Tenant.ITenantDbFactory, WO.Property.MaterialService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.MaterialService.Data.TenantDbContext>>(sp =>
+    new WO.Property.MaterialService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.MaterialService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.MaterialService.Data.TenantDbContext>>()
+    ));
 
 var app = builder.Build();
 
@@ -107,6 +118,11 @@ app.UseGlobalExceptionHandler();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// ─── Phase 1 租户路由中间件 ───
+app.UseMiddleware<TenantRoutingMiddleware>();
+
+app.MapControllers();
 
 // 健康检查端点
 app.MapGet("/health", () =>

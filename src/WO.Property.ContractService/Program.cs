@@ -8,12 +8,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.ContractService.Data;
+using WO.Property.ContractService.Middleware;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置端口
-builder.WebHost.UseUrls("http://0.0.0.0:5001");
+builder.WebHost.UseUrls("http://0.0.0.0:5501");
 
 // 添加数据库
 builder.Services.AddDbContext<ContractDbContext>(options =>
@@ -90,6 +91,15 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// ─── Phase 1 多租户组件注册 ───
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WO.Property.ContractService.Tenant.ITenantDbFactory, WO.Property.ContractService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.ContractService.Data.TenantDbContext>>(sp =>
+    new WO.Property.ContractService.Data.TenantDbContextFactory(
+        sp.GetRequiredService<WO.Property.ContractService.Tenant.ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<WO.Property.ContractService.Data.TenantDbContext>>()
+    ));
+
 var app = builder.Build();
 
 // 数据库迁移和种子数据
@@ -104,14 +114,17 @@ app.UseSwaggerUI(c =>
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ─── Phase 1 租户路由中间件 ───
+app.UseMiddleware<TenantRoutingMiddleware>();
+
 app.MapControllers();
 
 // 健康检查
-app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "ContractService", timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "ContractService", mode = "Phase 1 multi-tenant", timestamp = DateTime.UtcNow }));
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Contract Service");
-Console.WriteLine("  Port: 5001");
+Console.WriteLine("  Port: 5501");
 Console.WriteLine("  Swagger: http://localhost:5001/swagger");
 Console.WriteLine("===========================================");
 
