@@ -12,8 +12,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.Shared.Models;
 using WO.Property.Shared.Configuration;
-using WO.Property.TicketService.Data;
-using WO.Property.TicketService.Tenant;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,10 +30,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
     options.UseMySql(new MySqlConnection(connectionString), serverVersion);
 });
-
-// Phase 0: 租户服务注册
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddSingleton<WO.Property.TicketService.Tenant.ITenantDbFactory, WO.Property.TicketService.Tenant.TenantDbFactory>();
 
 // PersonService HttpClient
 builder.Services.AddHttpClient("PersonService", client =>
@@ -57,25 +51,6 @@ builder.Services.AddHttpClient("MasterDataService", client =>
     client.BaseAddress = new Uri("http://localhost:5019");
     client.Timeout = TimeSpan.FromSeconds(10);
 });
-
-// Phase 0: 临时使用 5102 端口
-builder.WebHost.UseUrls("http://0.0.0.0:5102");
-
-// Phase 0: 连接字符串配置
-builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-{
-    ["ConnectionStrings:CenterDb"] = "Server=127.0.0.1;Port=3306;Database=center_db;User=root;Password=;CharSet=utf8mb4",
-    ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4"
-});
-
-// Phase 0: TenantDbContextFactory 注册
-builder.Services.AddScoped<IDbContextFactory<TenantDbContext>>(sp =>
-    new TenantDbContextFactory(
-        sp.GetRequiredService<ITenantDbFactory>(),
-        sp.GetRequiredService<ILogger<TenantDbContextFactory>>(),
-        sp.GetRequiredService<IConfiguration>()
-    ));
-
 
 var jwtIssuer = "wo-property-unified-auth";
 var jwtAudience = "wo-property-services";
@@ -118,11 +93,11 @@ var app = builder.Build();
 
 
 app.UseCors("AllowAdminPortal");
-app.UseMiddleware<WO.Property.TicketService.Middleware.TenantRoutingMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
-// Port changed to 5102 for Phase 0
+app.Urls.Clear();
+app.Urls.Add("http://0.0.0.0:5002");
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Ticket Service");
@@ -227,7 +202,6 @@ public class Ticket : BaseEntity
     public int? CreatorPersonId { get; set; }
     public new string? CreatedBy { get; set; }
     public int? AssigneePersonId { get; set; }
-    public int ProjectId { get; set; }
     public int? Rating { get; set; }
     public string? ContactPersonName { get; set; }  // 标准化：contact_name
     public string? ContactPhone { get; set; }          // 标准化：phone_number
