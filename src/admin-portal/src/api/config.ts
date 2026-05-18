@@ -15,6 +15,7 @@ export const SERVICES = {
   announcement: 5011,
   person: 5018,
   cleaning: 5016,
+  statistics: 5014,
   community: 5022,
   express: 5017,
   parking: 5025,

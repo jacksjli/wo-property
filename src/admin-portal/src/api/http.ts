@@ -161,6 +161,7 @@ export const parkingApi = createHttpClient(getServiceUrl('parking'))
 export const paymentApi = createHttpClient(getServiceUrl('payment'))
 export const renovationApi = createHttpClient(getServiceUrl('renovation'))
 // All services route through API Gateway (port 5000)
+export const statisticsApi = createHttpClient(getServiceUrl("statistics"))
 export const personApi = createHttpClient(getServiceUrl('person'))
 export const masterApi = createHttpClient('http://localhost:5000/api/master-data')
 // Alias for backward compatibility

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getServiceUrl } from './config';
 
 // Auth 服务基础 URL - Phase 0 使用 5106（独立多租户）
-const AUTH_BASE_URL = `${API_BASE_URL}:5106`;
+const AUTH_BASE_URL = 'http://localhost:5106';
 
 // 创建统一认证服务HTTP客户端
 const authHttp = axios.create({
@@ -118,6 +118,18 @@ export const isAuthenticated = () => {
 };
 
 export default {
+  login,
+  register,
+  getCurrentUser,
+  validateToken,
+  logout,
+  getStoredUserInfo,
+  getStoredToken,
+  isAuthenticated
+};
+
+// Named export alias for convenience
+export const auth = {
   login,
   register,
   getCurrentUser,

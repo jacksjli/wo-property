@@ -1,4 +1,11 @@
-# 工单模块 API 定义
+# ⚠️ DEPRECATED - 请参考 docs/PHASE0_MULTI_TENANT_ARCHITECTURE.md
+
+> **状态**：此文档描述的是单租户旧版 API，Phase 0 多租户改造后已不适用。
+> 新版 API 请参考：`docs/PHASE0_MULTI_TENANT_ARCHITECTURE.md`
+
+---
+
+# 工单模块 API 定义（旧版单租户）
 
 > **版本**：v1.0
 > **服务**：TicketService (5002)
