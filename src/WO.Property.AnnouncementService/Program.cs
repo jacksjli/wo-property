@@ -10,10 +10,13 @@ using System.Text.Json.Serialization;
 using WO.Property.AnnouncementService.Data;
 using WO.Property.AnnouncementService.Models;
 using WO.Property.Shared.Configuration;
+using WO.Property.AnnouncementService.Tenant;
+using WO.Property.AnnouncementService.Middleware;
+using WO.Property.AnnouncementService.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5011");
+builder.WebHost.UseUrls("http://0.0.0.0:5511");
 
 builder.Services.AddDbContext<AnnouncementDbContext>(options =>
 {
@@ -38,17 +41,36 @@ builder.Services.ConfigureHttpJsonOptions(opts => {
     opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 builder.Services.AddControllers();
+// Phase 1: 多租户连接字符串配置
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4"
+});
+
 builder.Services.AddCors(options => options.AddPolicy("AllowFrontend", policy => {
     var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins")
         .Get<string[]>() ?? new[] { "http://localhost:5173" };
     policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
 }));
 
-var app = builder.Build();
 
+// Phase 1: 租户服务注册（必须在 builder.Build() 之前）
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<ITenantDbFactory, TenantDbFactory>();
+
+// Phase 1: TenantDbContextFactory 注册
+builder.Services.AddScoped<IDbContextFactory<TenantDbContext>>(sp =>
+    new TenantDbContextFactory(
+        sp.GetRequiredService<ITenantDbFactory>(),
+        sp.GetRequiredService<ILogger<TenantDbContextFactory>>(),
+        sp.GetRequiredService<IConfiguration>()
+    ));
+
+var app = builder.Build();;
 
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
+app.UseMiddleware<TenantRoutingMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
