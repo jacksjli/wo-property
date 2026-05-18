@@ -2,13 +2,14 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { authApi } from '../api/http'
+import { auth } from '../api/auth'
 
 const router = useRouter()
 
 const loginForm = ref({
-  username: 'admin',
-  password: 'Admin@123'
+  tenantCode: 'tenant_a',
+  username: 'admin_a',
+  password: 'Test@123'
 })
 
 const loading = ref(false)
@@ -18,16 +19,17 @@ const handleLogin = async () => {
     ElMessage.warning('请输入用户名和密码')
     return
   }
-  
+
   loading.value = true
   try {
-    const response = await authApi.post('/api/auth/login', {
-      username: loginForm.value.username,
-      password: loginForm.value.password
-    })
-    
+    const response = await auth.login(
+      loginForm.value.username,
+      loginForm.value.password,
+      loginForm.value.tenantCode
+    )
+
     if (response.success && response.data?.token) {
-      localStorage.setItem('token', response.data.token)
+      localStorage.setItem('auth_token', response.data.token)
       localStorage.setItem('user', JSON.stringify(response.data))
       ElMessage.success('登录成功')
       router.push('/')
@@ -36,8 +38,9 @@ const handleLogin = async () => {
     }
   } catch (error: any) {
     ElMessage.error(error.message || '登录失败，请检查用户名和密码')
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 </script>
 
@@ -47,12 +50,23 @@ const handleLogin = async () => {
       <div class="login-header">
         <el-icon size="48" color="#409eff"><House /></el-icon>
         <h1>WO物业管理</h1>
-        <p>物业管理系统</p>
+        <p>物业管理系统（多租户版）</p>
       </div>
-      
+
       <el-form :model="loginForm" class="login-form">
         <el-form-item>
-          <el-input 
+          <el-select
+            v-model="loginForm.tenantCode"
+            placeholder="选择物业"
+            size="large"
+            style="width: 100%"
+          >
+            <el-option label="阳光物业 (tenant_a)" value="tenant_a" />
+            <el-option label="绿城物业 (tenant_b)" value="tenant_b" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-input
             v-model="loginForm.username"
             placeholder="用户名"
             size="large"
@@ -60,7 +74,7 @@ const handleLogin = async () => {
           />
         </el-form-item>
         <el-form-item>
-          <el-input 
+          <el-input
             v-model="loginForm.password"
             type="password"
             placeholder="密码"
@@ -70,9 +84,9 @@ const handleLogin = async () => {
           />
         </el-form-item>
         <el-form-item>
-          <el-button 
-            type="primary" 
-            size="large" 
+          <el-button
+            type="primary"
+            size="large"
             :loading="loading"
             @click="handleLogin"
             class="login-btn"
@@ -81,9 +95,9 @@ const handleLogin = async () => {
           </el-button>
         </el-form-item>
       </el-form>
-      
+
       <div class="login-footer">
-        <p>测试账号: admin / Admin@123</p>
+        <p>测试账号: admin_a/Test@123 | admin_b/Test@123</p>
       </div>
     </div>
   </div>

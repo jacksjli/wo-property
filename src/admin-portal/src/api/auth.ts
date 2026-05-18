@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { getServiceUrl } from './config';
 
-// Auth 服务基础 URL - 通过 Gateway
-const AUTH_BASE_URL = getServiceUrl('auth');
+// Auth 服务基础 URL - Phase 0 使用 5106（独立多租户）
+const AUTH_BASE_URL = `${API_BASE_URL}:5106`;
 
 // 创建统一认证服务HTTP客户端
 const authHttp = axios.create({
@@ -49,10 +49,11 @@ const LOGIN_ENDPOINT = '/api/auth/login'
 const REGISTER_ENDPOINT = '/api/auth/register'
 const ME_ENDPOINT = '/api/auth/me'
 
-export const login = async (username: string, password: string) => {
+export const login = async (username: string, password: string, tenantCode?: string) => {
   const response = await authHttp.post(LOGIN_ENDPOINT, {
     username,
-    password
+    password,
+    ...(tenantCode ? { tenantCode } : {})
   });
 
   if (response.data.success && response.data.data.token) {
