@@ -122,7 +122,7 @@ const selectProject = (project: any) => {
 }
 
 // 切换模块选择
-const toggleModule = (moduleName: string) => {
+const toggleModule = async (moduleName: string) => {
   if (!isAdmin()) {
     ElMessage.warning('只有系统管理员才能配置模块')
     return
