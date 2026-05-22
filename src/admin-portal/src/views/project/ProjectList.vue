@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Delete, Setting, Check, InfoFilled, ArrowLeft, ArrowRight, View, Monitor, Tickets, Box, Document, Money, Location, Warning, Key, User, Bell, DataAnalysis, UserFilled, House, CreditCard, Odometer, Tools, Folder } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -286,6 +286,11 @@ const loadProjects = async () => {
     console.error('加载项目列表失败:', error)
   }
 }
+
+// 组件挂载时自动加载项目
+onMounted(() => {
+  loadProjects()
+})
 
 // 删除项目
 const handleDelete = async () => {
