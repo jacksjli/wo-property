@@ -254,17 +254,33 @@ const loadProjects = async () => {
     const data = await response.json()
     if (data.success && data.data) {
       // 转换后端数据为前端格式
-      projects.value = data.data.map((p: any) => ({
-        id: p.id,
-        code: p.code,
-        name: p.name,
-        description: p.description || '',
-        status: p.status === 'active' ? 'Active' : 'Inactive',
-        databaseName: p.databaseName,
-        modules: ['工单管理', '设备管理', '物料管理', '合同管理', '财务管理'],
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt
+      // 先获取所有项目的模块配置
+      const projectsWithModules = await Promise.all(data.data.map(async (p: any) => {
+        let modules: string[] = []
+        try {
+          const modRes = await fetch(`http://localhost:5000/api/projects/${p.code}/modules`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          const modData = await modRes.json()
+          if (modData.success && modData.data) {
+            modules = modData.data
+          }
+        } catch (e) {
+          console.error(`获取项目 ${p.code} 模块失败`, e)
+        }
+        return {
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          description: p.description || '',
+          status: p.status === 'active' ? 'Active' : 'Inactive',
+          databaseName: p.databaseName,
+          modules,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt
+        }
       }))
+      projects.value = projectsWithModules
     }
   } catch (error) {
     console.error('加载项目列表失败:', error)
