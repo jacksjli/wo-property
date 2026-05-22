@@ -1,6 +1,6 @@
 import { createHttpClient } from './http'
 
-const BASE_URL = 'http://localhost:5003'  // DispatchService
+const BASE_URL = 'http://localhost:5019'  // MasterDataService
 
 const dispatchApi = createHttpClient(BASE_URL)
 
