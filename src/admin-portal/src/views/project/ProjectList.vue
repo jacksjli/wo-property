@@ -173,7 +173,25 @@ const toggleModule = (moduleName: string) => {
     projects.value[projectIndex] = { ...selectedProject.value }
   }
   
-  // 自动保存
+  // 同步到后端
+  try {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`http://localhost:5000/api/projects/${selectedProject.value.code}/modules`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(selectedProject.value.modules)
+    })
+    const data = await response.json()
+    if (!data.success) {
+      console.warn('模块同步后端失败:', data.message)
+    }
+  } catch (e) {
+    console.error('同步模块到后端失败', e)
+  }
+  
   saveProjectsConfig()
   ElMessage.success('模块配置已保存')
 }
