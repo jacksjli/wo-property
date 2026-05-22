@@ -160,6 +160,17 @@ public class ProjectDatabaseService
         await using var conn = new MySqlConnection(_connectionString + $"Database={dbName}");
         await conn.OpenAsync();
 
+        // 先确保 _schema_version 表存在
+        var createTableSql = @"
+        CREATE TABLE IF NOT EXISTS `_schema_version` (
+          `version` varchar(20) NOT NULL,
+          `applied_at` datetime DEFAULT CURRENT_TIMESTAMP,
+          `description` varchar(200) DEFAULT NULL,
+          PRIMARY KEY (`version`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        await using var createCmd = new MySqlCommand(createTableSql, conn);
+        await createCmd.ExecuteNonQueryAsync();
+
         var sql = $"INSERT INTO `_schema_version` (version, description) VALUES ('{version}', 'Migrated to {version}')";
         await using var cmd = new MySqlCommand(sql, conn);
         await cmd.ExecuteNonQueryAsync();

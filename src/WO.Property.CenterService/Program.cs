@@ -292,5 +292,19 @@ app.MapDelete("/api/projects/{code}", async (string code, CenterDbContext db, Pr
     return Results.Json(new { success = true, message = $"项目 {project.Name} 删除成功，数据库 {dbName} 正在删除中" });
 });
 
+// POST /api/projects/{code}/migrate - 升级项目数据库 Schema
+app.MapPost("/api/projects/{code}/migrate", async (string code, CenterDbContext db, ProjectDatabaseService dbService) =>
+{
+    var project = await db.Projects.FirstOrDefaultAsync(p => p.Code == code);
+    if (project == null)
+    {
+        return Results.Json(new { success = false, message = "项目不存在" });
+    }
+    
+    var (success, message, migratedTables) = await dbService.MigrateDatabaseAsync(code);
+    
+    return Results.Json(new { success, message, migratedTables });
+});
+
 
 app.Run();
