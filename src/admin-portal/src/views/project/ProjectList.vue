@@ -257,6 +257,18 @@ const loadProjects = async () => {
       // 先获取所有项目的模块配置
       const projectsWithModules = await Promise.all(data.data.map(async (p: any) => {
         let modules: string[] = []
+        let healthy = false
+        // 检查项目后端是否正常运行
+        try {
+          const healthRes = await fetch(`http://localhost:5000/api/projects/${p.code}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: AbortSignal.timeout(3000)
+          })
+          healthy = healthRes.ok
+        } catch (e) {
+          healthy = false
+        }
+        // 获取模块配置
         try {
           const modRes = await fetch(`http://localhost:5000/api/projects/${p.code}/modules`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -276,6 +288,7 @@ const loadProjects = async () => {
           status: p.status === 'active' ? 'Active' : 'Inactive',
           databaseName: p.databaseName,
           modules,
+          healthy,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt
         }
@@ -448,6 +461,7 @@ const handleDelete = async () => {
           >
             <div class="project-info">
               <div class="project-name">
+                <span :class="['status-dot', project.healthy ? 'healthy' : 'unhealthy']"></span>
                 <span>{{ project.name }}</span>
                 <el-switch
                   v-model="project.status"
@@ -844,6 +858,23 @@ const handleDelete = async () => {
 
 .project-name span {
   flex: 1;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-dot.healthy {
+  background-color: #67C23A;
+}
+
+.status-dot.unhealthy {
+  background-color: #F56C6C;
 }
 
 .project-code {
