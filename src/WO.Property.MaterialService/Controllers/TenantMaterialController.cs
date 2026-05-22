@@ -22,14 +22,14 @@ public class TenantMaterialController : ControllerBase
 
     // GET /api/tenant/material/materials
     [HttpGet("materials")]
-    public async Task<IActionResult> GetMaterials([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? categoryId = null)
+    public async Task<IActionResult> GetMaterials([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? category = null)
     {
         try
         {
             using var db = CreateDbContext();
             var query = db.Materials.AsQueryable();
-            if (categoryId.HasValue)
-                query = query.Where(m => m.CategoryId == categoryId.Value);
+            if (!string.IsNullOrEmpty(category))
+                query = query.Where(m => m.Category == category);
             var total = await query.CountAsync();
             var items = await query
                 .OrderByDescending(m => m.CreatedAt)
@@ -38,15 +38,19 @@ public class TenantMaterialController : ControllerBase
                 .Select(m => new
                 {
                     id = m.Id,
-                    code = m.Code,
+                    materialNo = m.MaterialNo,
                     name = m.Name,
-                    description = m.Description ?? "",
-                    categoryId = m.CategoryId,
+                    category = m.Category,
+                    spec = m.Spec ?? "",
                     unit = m.Unit,
-                    unitPrice = m.UnitPrice,
-                    safetyStock = m.SafetyStock,
-                    maxStock = m.MaxStock,
-                    currentStock = m.CurrentStock
+                    quantity = m.Quantity,
+                    minQuantity = m.MinQuantity,
+                    price = m.Price,
+                    location = m.Location ?? "",
+                    status = m.Status,
+                    supplier = m.Supplier ?? "",
+                    remark = m.Remark ?? "",
+                    createdAt = m.CreatedAt
                 })
                 .ToListAsync();
             return Ok(new { success = true, data = items, total, page, pageSize });
@@ -67,24 +71,83 @@ public class TenantMaterialController : ControllerBase
             using var db = CreateDbContext();
             var material = new Material
             {
-                Code = request.Code,
+                MaterialNo = request.MaterialNo,
                 Name = request.Name,
-                Description = request.Description,
-                CategoryId = request.CategoryId,
+                Category = request.Category,
+                Spec = request.Spec,
                 Unit = request.Unit,
-                UnitPrice = request.UnitPrice,
-                SafetyStock = request.SafetyStock,
-                MaxStock = request.MaxStock,
-                CurrentStock = request.CurrentStock,
+                Quantity = request.Quantity,
+                MinQuantity = request.MinQuantity,
+                Price = request.Price,
+                Location = request.Location,
+                Status = request.Status,
+                Supplier = request.Supplier,
+                Remark = request.Remark,
                 CreatedAt = DateTime.UtcNow
             };
             db.Materials.Add(material);
             await db.SaveChangesAsync();
-            return Ok(new { success = true, message = "物料创建成功", data = new { id = material.Id, code = material.Code } });
+            return Ok(new { success = true, message = "物料创建成功", data = new { id = material.Id, materialNo = material.MaterialNo } });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "CreateMaterial failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // PUT /api/tenant/material/materials/{id}
+    [HttpPut("materials/{id}")]
+    public async Task<IActionResult> UpdateMaterial(int id, [FromBody] UpdateMaterialRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var material = await db.Materials.FindAsync(id);
+            if (material == null)
+                return Ok(new { success = false, message = "物料不存在" });
+
+            if (!string.IsNullOrEmpty(request.MaterialNo)) material.MaterialNo = request.MaterialNo;
+            if (!string.IsNullOrEmpty(request.Name)) material.Name = request.Name;
+            if (!string.IsNullOrEmpty(request.Category)) material.Category = request.Category;
+            if (request.Spec != null) material.Spec = request.Spec;
+            if (!string.IsNullOrEmpty(request.Unit)) material.Unit = request.Unit;
+            if (request.Quantity.HasValue) material.Quantity = request.Quantity.Value;
+            if (request.MinQuantity.HasValue) material.MinQuantity = request.MinQuantity.Value;
+            if (request.Price.HasValue) material.Price = request.Price.Value;
+            if (request.Location != null) material.Location = request.Location;
+            if (!string.IsNullOrEmpty(request.Status)) material.Status = request.Status;
+            if (request.Supplier != null) material.Supplier = request.Supplier;
+            if (request.Remark != null) material.Remark = request.Remark;
+
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, message = "物料更新成功" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UpdateMaterial failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // DELETE /api/tenant/material/materials/{id}
+    [HttpDelete("materials/{id}")]
+    public async Task<IActionResult> DeleteMaterial(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var material = await db.Materials.FindAsync(id);
+            if (material == null)
+                return Ok(new { success = false, message = "物料不存在" });
+
+            db.Materials.Remove(material);
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, message = "物料删除成功" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DeleteMaterial failed");
             return Ok(new { success = false, message = ex.Message });
         }
     }
@@ -99,21 +162,21 @@ public class TenantMaterialController : ControllerBase
             var material = await db.Materials.FindAsync(request.MaterialId);
             if (material == null) return NotFound(new { success = false, message = "物料不存在" });
 
-            material.CurrentStock += request.Quantity;
+            material.Quantity += request.Quantity;
             var transaction = new StockTransaction
             {
                 MaterialId = request.MaterialId,
                 TransactionType = "In",
                 Quantity = request.Quantity,
-                UnitPrice = material.UnitPrice,
-                TotalAmount = request.Quantity * material.UnitPrice,
+                UnitPrice = material.Price,
+                TotalAmount = request.Quantity * material.Price,
                 Operator = request.Operator,
                 Notes = request.Notes,
                 CreatedAt = DateTime.UtcNow
             };
             db.StockTransactions.Add(transaction);
             await db.SaveChangesAsync();
-            return Ok(new { success = true, message = "入库成功", newStock = material.CurrentStock });
+            return Ok(new { success = true, message = "入库成功", newStock = material.Quantity });
         }
         catch (Exception ex)
         {
@@ -131,24 +194,24 @@ public class TenantMaterialController : ControllerBase
             using var db = CreateDbContext();
             var material = await db.Materials.FindAsync(request.MaterialId);
             if (material == null) return NotFound(new { success = false, message = "物料不存在" });
-            if (material.CurrentStock < request.Quantity)
+            if (material.Quantity < request.Quantity)
                 return Ok(new { success = false, message = "库存不足" });
 
-            material.CurrentStock -= request.Quantity;
+            material.Quantity -= request.Quantity;
             var transaction = new StockTransaction
             {
                 MaterialId = request.MaterialId,
                 TransactionType = "Out",
                 Quantity = request.Quantity,
-                UnitPrice = material.UnitPrice,
-                TotalAmount = request.Quantity * material.UnitPrice,
+                UnitPrice = material.Price,
+                TotalAmount = request.Quantity * material.Price,
                 Operator = request.Operator,
                 Notes = request.Notes,
                 CreatedAt = DateTime.UtcNow
             };
             db.StockTransactions.Add(transaction);
             await db.SaveChangesAsync();
-            return Ok(new { success = true, message = "出库成功", newStock = material.CurrentStock });
+            return Ok(new { success = true, message = "出库成功", newStock = material.Quantity });
         }
         catch (Exception ex)
         {
@@ -172,20 +235,8 @@ public class TenantMaterialController : ControllerBase
                 .OrderByDescending(t => t.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(t => new
-                {
-                    id = t.Id,
-                    materialId = t.MaterialId,
-                    transactionType = t.TransactionType,
-                    quantity = t.Quantity,
-                    unitPrice = t.UnitPrice,
-                    totalAmount = t.TotalAmount,
-                    @operator = t.Operator ?? "",
-                    notes = t.Notes ?? "",
-                    createdAt = t.CreatedAt
-                })
                 .ToListAsync();
-            return Ok(new { success = true, data = items, total, page, pageSize });
+            return Ok(new { success = true, total, page, pageSize, data = items });
         }
         catch (Exception ex)
         {
@@ -193,19 +244,115 @@ public class TenantMaterialController : ControllerBase
             return Ok(new { success = false, message = ex.Message });
         }
     }
+
+    // ==================== 物料分类管理 ====================
+    [HttpGet("categories")]
+    public async Task<IActionResult> GetCategories()
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var categories = await db.MaterialCategories
+                .Where(c => c.IsDeleted == false)
+                .OrderBy(c => c.Code)
+                .ToListAsync();
+            return Ok(new { success = true, data = categories });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetCategories failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpPost("categories")]
+    public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var category = new MaterialCategory
+            {
+                Name = request.Name,
+                Code = request.Code,
+                Description = request.Description ?? "",
+                CreatedBy = "system",
+                CreatedAt = DateTime.UtcNow
+            };
+            db.MaterialCategories.Add(category);
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, data = category });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CreateCategory failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpPut("categories/{id}")]
+    public async Task<IActionResult> UpdateCategory(long id, [FromBody] UpdateCategoryRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var category = await db.MaterialCategories.FindAsync(id);
+            if (category == null)
+                return NotFound(new { success = false, message = "分类不存在" });
+            
+            if (!string.IsNullOrEmpty(request.Name)) category.Name = request.Name;
+            if (!string.IsNullOrEmpty(request.Code)) category.Code = request.Code;
+            if (request.Description != null) category.Description = request.Description;
+            category.UpdatedBy = "system";
+            category.UpdatedAt = DateTime.UtcNow;
+            
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, data = category });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UpdateCategory failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpDelete("categories/{id}")]
+    public async Task<IActionResult> DeleteCategory(long id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var category = await db.MaterialCategories.FindAsync(id);
+            if (category == null)
+                return NotFound(new { success = false, message = "分类不存在" });
+            
+            category.IsDeleted = true;
+            category.UpdatedBy = "system";
+            category.UpdatedAt = DateTime.UtcNow;
+            
+            await db.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DeleteCategory failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
 }
 
-public class CreateMaterialRequest
+public class CreateCategoryRequest
 {
-    public string Code { get; set; } = "";
-    public string Name { get; set; } = "";
+    public string Name { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public int CategoryId { get; set; }
-    public string Unit { get; set; } = "";
-    public decimal UnitPrice { get; set; }
-    public int SafetyStock { get; set; }
-    public int MaxStock { get; set; }
-    public int CurrentStock { get; set; }
+}
+
+public class UpdateCategoryRequest
+{
+    public string? Name { get; set; }
+    public string? Code { get; set; }
+    public string? Description { get; set; }
 }
 
 public class StockOperationRequest
@@ -214,4 +361,36 @@ public class StockOperationRequest
     public int Quantity { get; set; }
     public string? Operator { get; set; }
     public string? Notes { get; set; }
+}
+
+public class CreateMaterialRequest
+{
+    public string MaterialNo { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string? Spec { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public int MinQuantity { get; set; }
+    public decimal Price { get; set; }
+    public string? Location { get; set; }
+    public string Status { get; set; } = "normal";
+    public string? Supplier { get; set; }
+    public string? Remark { get; set; }
+}
+
+public class UpdateMaterialRequest
+{
+    public string? MaterialNo { get; set; }
+    public string? Name { get; set; }
+    public string? Category { get; set; }
+    public string? Spec { get; set; }
+    public string? Unit { get; set; }
+    public int? Quantity { get; set; }
+    public int? MinQuantity { get; set; }
+    public decimal? Price { get; set; }
+    public string? Location { get; set; }
+    public string? Status { get; set; }
+    public string? Supplier { get; set; }
+    public string? Remark { get; set; }
 }

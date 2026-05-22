@@ -147,11 +147,21 @@ const handleSubmit = async () => {
   }
 
   try {
+    const payload = {
+      Name: form.value.name,
+      Phone: form.value.phone,
+      IdCardNumber: form.value.idCardNumber || null,
+      BuildingId: form.value.buildingId,
+      RoomId: form.value.roomId,
+      ResidentType: form.value.residentType,
+      CheckInDate: form.value.checkInDate || null,
+      Remarks: form.value.remark || null,
+    }
     if (editingId.value) {
-      await masterApi.put(`/residents/${editingId.value}`, form.value)
+      await masterApi.put(`/residents/${editingId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/residents', form.value)
+      await masterApi.post('/residents', payload)
       ElMessage.success('添加成功')
     }
     dialogVisible.value = false

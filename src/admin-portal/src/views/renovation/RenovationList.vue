@@ -150,13 +150,13 @@ const handleSave = async () => {
   submitting.value = true
   try {
     const payload = {
-      roomId: form.value.roomId,
-      applicantName: form.value.applicantName,
-      applicantPhone: form.value.applicantPhone || undefined,
-      description: form.value.description,
-      startDate: form.value.startDate || undefined,
-      endDate: form.value.endDate || undefined,
-      remarks: form.value.remarks || undefined,
+      RoomId: form.value.roomId,
+      ApplicantName: form.value.applicantName,
+      ApplicantPhone: form.value.applicantPhone || null,
+      Description: form.value.description,
+      StartDate: form.value.startDate || null,
+      EndDate: form.value.endDate || null,
+      Remarks: form.value.remarks || null,
     }
     if (isEdit.value && currentId.value) {
       await masterApi.put(`/renovation-requests/${currentId.value}`, payload)

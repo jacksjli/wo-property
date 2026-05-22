@@ -22,8 +22,8 @@ const form = ref({
   name: '',
   category: '',
   description: '',
-  sort: 0,
-  isActive: true,
+  sortOrder: 0,
+  status: 'Active',
 })
 
 onMounted(() => { loadData() })
@@ -41,14 +41,14 @@ const loadData = async () => {
 
 const openCreate = () => {
   isEdit.value = false
-  form.value = { code: '', name: '', category: '', description: '', sort: 0, isActive: true }
+  form.value = { code: '', name: '', category: '', description: '', sortOrder: 0, status: 'Active' }
   dialogVisible.value = true
 }
 
 const openEdit = (row: any) => {
   isEdit.value = true
   currentId.value = row.id
-  form.value = { code: row.code, name: row.name, category: row.category || '', description: row.description || '', sort: row.sort, isActive: row.isActive }
+  form.value = { code: row.code, name: row.name, category: row.category || '', description: row.description || '', sortOrder: row.sortOrder, status: row.status || 'Active' }
   dialogVisible.value = true
 }
 
@@ -103,10 +103,10 @@ const handleDelete = async (row: any) => {
         <el-table-column prop="name" label="设备类型" />
         <el-table-column prop="category" label="分类" width="120" align="center" />
         <el-table-column prop="description" label="描述" />
-        <el-table-column prop="sort" label="排序" width="80" align="center" />
-        <el-table-column prop="isActive" label="状态" width="80" align="center">
+        <el-table-column prop="sortOrder" label="排序" width="80" align="center" />
+        <el-table-column prop="status" label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.isActive ? 'success' : 'info'" size="small">{{ row.isActive ? '启用' : '停用' }}</el-tag>
+            <el-tag :type="row.status === 'Active' ? 'success' : 'info'" size="small">{{ row.status === 'Active' ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" align="center">
@@ -128,8 +128,8 @@ const handleDelete = async (row: any) => {
           </el-select>
         </el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="排序"><el-input-number v-model="form.sort" :min="0" /></el-form-item>
-        <el-form-item label="状态"><el-switch v-model="form.isActive" active-text="启用" inactive-text="停用" /></el-form-item>
+        <el-form-item label="排序"><el-input-number v-model="form.sortOrder" :min="0" /></el-form-item>
+        <el-form-item label="状态"><el-switch v-model="form.status" active-value="Active" inactive-value="Inactive" active-text="启用" inactive-text="停用" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>

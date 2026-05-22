@@ -35,13 +35,16 @@ public class TenantDbFactory : ITenantDbFactory
         var baseConnStr = _configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Default connection string not configured");
 
+        // 项目数据库命名规范：project_{project_code}
+        var databaseName = $"project_{tenantCode}";
+
         var result = System.Text.RegularExpressions.Regex.Replace(
             baseConnStr,
             @"Database\s*=\s*[^;]+",
-            $"Database={tenantCode}",
+            $"Database={databaseName}",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-        _logger.LogDebug("Generated connection string for tenant {TenantCode}", tenantCode);
+        _logger.LogDebug("Generated connection string for tenant {TenantCode} -> database {Database}", tenantCode, databaseName);
         return result;
     }
 }

@@ -193,11 +193,23 @@ const handleEdit = (row: any) => {
 const handleSave = async () => {
   submitting.value = true
   try {
+    const payload = {
+      ParkingSpaceNumber: formData.value.parkingSpaceNumber,
+      BuildingId: formData.value.buildingId,
+      Floor: formData.value.floor,
+      SpaceType: formData.value.spaceType,
+      LicensePlate: formData.value.licensePlate || null,
+      ResidentId: formData.value.residentId,
+      StartDate: formData.value.startDate || null,
+      EndDate: formData.value.endDate || null,
+      MonthlyFee: formData.value.monthlyFee,
+      Status: formData.value.status,
+    }
     if (editingSpace.value) {
-      await masterApi.put(`/parking-records/${editingSpace.value.id}`, formData.value)
+      await masterApi.put(`/parking-records/${editingSpace.value.id}`, payload)
       ElMessage.success('车位信息更新成功')
     } else {
-      await masterApi.post('/parking-records', formData.value)
+      await masterApi.post('/parking-records', payload)
       ElMessage.success('车位新增成功')
     }
     dialogVisible.value = false

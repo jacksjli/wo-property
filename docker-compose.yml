@@ -153,8 +153,8 @@ services:
 
   ticket-service:
     build:
-      context: ./src/WO.Property.TicketService
-      dockerfile: Dockerfile
+      context: ./src
+      dockerfile: WO.Property.TicketService/Dockerfile
     container_name: wo-ticket-service
     environment:
       - ASPNETCORE_ENVIRONMENT=Production

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -8,8 +9,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.Shared.Configuration;
-using WO.Property.Shared.Logging;
 using WO.Property.PersonService.Data;
+using WO.Property.PersonService.Tenant;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +39,15 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+// Tenant 支持
+builder.Services.AddSingleton<TenantConfigLoader>();
+builder.Services.AddSingleton<ITenantDbFactory, TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<TenantDbContext>>(sp =>
+    new TenantDbContextFactory(
+        sp.GetRequiredService<ITenantDbFactory>(),
+        sp.GetRequiredService<ILoggerFactory>()
+    ));
 
 // Configure Kestrel to listen on port 5018
 builder.WebHost.ConfigureKestrel(options =>
@@ -155,9 +165,10 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = string.Empty;
 });
 
-app.UseRequestLogging();
-app.UseGlobalExceptionHandler();
 app.UseCors();
+// X-Project 路由中间件
+app.UseMiddleware<WO.Property.PersonService.Middleware.TenantRoutingMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

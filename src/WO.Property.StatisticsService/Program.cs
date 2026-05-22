@@ -2,24 +2,40 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
-using Npgsql;
+using MySqlConnector;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.Shared.Configuration;
+using WO.Property.StatisticsService.Models;
+using WO.Property.StatisticsService.Tenant;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 配置端口 - 使用5014端口
-builder.WebHost.UseUrls("http://0.0.0.0:5014");
+// 配置端口
+builder.WebHost.UseUrls("http://0.0.0.0:5241");
 
-// 获取数据库连接字符串
+// Tenant 支持
+builder.Services.AddSingleton<TenantConfigLoader>();
+builder.Services.AddSingleton<ITenantDbFactory, TenantDbFactory>();
+
+// 获取数据库连接字符串（支持 X-Project 动态切换）
+// 注意：StatisticsService 当前使用固定数据库连接，X-Project 路由仅用于中间件验证
 var dbConnectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
-    ?? "Host=postgres;Database=wo_property;Username=woproperty;Password=WOProperty2026!";
+    ?? "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4;AllowUserVariables=true";
 
-// 注册 PostgreSQL 连接
-builder.Services.AddScoped<NpgsqlConnection>(_ =>
-    new NpgsqlConnection(dbConnectionString));
+// 注册 MySQL 连接工厂（每次请求创建新连接）
+builder.Services.AddScoped<MySqlConnection>(sp => {
+    var factory = sp.GetService<ITenantDbFactory>();
+    if (factory != null)
+    {
+        try {
+            var tenantCode = factory.GetCurrentTenantCode() ?? "wo_property";
+            return new MySqlConnection(factory.GetTenantConnectionString(tenantCode));
+        } catch { }
+    }
+    return new MySqlConnection(dbConnectionString);
+});
 
 // JWT 配置
 var jwtIssuer = "wo-property-unified-auth";
@@ -70,24 +86,24 @@ builder.Services.AddControllers()
 
 var app = builder.Build();
 
-// 初始化数据库表
-using (var connection = new NpgsqlConnection(dbConnectionString))
+// 初始化数据库表（MySQL 语法）
+using (var connection = new MySqlConnection(dbConnectionString))
 {
     await connection.OpenAsync();
 
     var initSql = @"
 CREATE TABLE IF NOT EXISTS dashboard_configs (
-    id SERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     layout TEXT,
     metrics TEXT,
     created_by VARCHAR(50) DEFAULT '系统',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS metric_snapshots (
-    id SERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     snapshot_date DATE NOT NULL UNIQUE,
     total_properties INT DEFAULT 0,
     total_units INT DEFAULT 0,
@@ -110,13 +126,11 @@ CREATE TABLE IF NOT EXISTS metric_snapshots (
     issues_resolved INT DEFAULT 0,
     total_visitors INT DEFAULT 0,
     active_visitors INT DEFAULT 0,
-    total_keys INT DEFAULT 0,
-    borrowed_keys INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS reports (
-    id SERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     report_number VARCHAR(50) NOT NULL UNIQUE,
     title VARCHAR(200),
     type VARCHAR(20),
@@ -126,27 +140,41 @@ CREATE TABLE IF NOT EXISTS reports (
     data TEXT,
     summary TEXT,
     generated_by VARCHAR(100),
-    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS trend_records (
-    id SERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     metric_name VARCHAR(100) NOT NULL,
     record_date DATE NOT NULL,
     value DECIMAL(15,4) DEFAULT 0,
     category VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX IF NOT EXISTS idx_tr_metric_date ON trend_records(metric_name, record_date);
 ";
 
-    using var cmd = new NpgsqlCommand(initSql, connection);
+    using var cmd = new MySqlCommand(initSql, connection);
     await cmd.ExecuteNonQueryAsync();
+
+    // 安全创建索引（如果不存在则创建）
+    var createIndexSql = @"CALL AddIndexSafe('trend_records', 'idx_tr_metric_date', 'metric_name, record_date');";
+    try
+    {
+        await using var createIdxCmd = new MySqlCommand(createIndexSql, connection);
+        await createIdxCmd.ExecuteNonQueryAsync();
+    }
+    catch
+    {
+        // 忽略索引已存在的错误
+    }
 }
 
 app.UseCors("AllowAdminPortal");
+
+// X-Project 路由中间件
+app.UseMiddleware<WO.Property.StatisticsService.Middleware.TenantRoutingMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -154,13 +182,13 @@ app.MapControllers();
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "StatisticsService", timestamp = DateTime.UtcNow }));
 
-app.MapGet("/api/metrics/indicators", [Authorize] async (NpgsqlConnection db) =>
+app.MapGet("/api/metrics/indicators", [Authorize] async (MySqlConnection db) =>
 {
     await db.OpenAsync();
 
     var snapshot = new MetricSnapshotDto();
 
-    using var cmd = new NpgsqlCommand("SELECT * FROM metric_snapshots ORDER BY snapshot_date DESC LIMIT 1", db);
+    using var cmd = new MySqlCommand("SELECT * FROM metric_snapshots ORDER BY snapshot_date DESC LIMIT 1", db);
     using var reader = await cmd.ExecuteReaderAsync();
     if (await reader.ReadAsync())
     {
@@ -246,29 +274,134 @@ app.MapGet("/api/metrics/indicators", [Authorize] async (NpgsqlConnection db) =>
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Statistics Service");
-Console.WriteLine("  Port: 5014");
+Console.WriteLine("  Port: 5026");
+Console.WriteLine("  Database: MySQL (wo_property)");
 Console.WriteLine("===========================================");
 
 app.Run();
 
-public class MetricSnapshotDto
+// ==================== 设备报表 API ====================
+app.MapGet("/api/device-reports", async (HttpContext context) =>
 {
-    public int TotalProperties { get; set; }
-    public int TotalUnits { get; set; }
-    public decimal OccupancyRate { get; set; }
-    public decimal TotalRevenue { get; set; }
-    public decimal PropertyFeeRevenue { get; set; }
-    public decimal CollectionRate { get; set; }
-    public decimal TotalExpense { get; set; }
-    public int TotalComplaints { get; set; }
-    public int ResolvedComplaints { get; set; }
-    public decimal ComplaintResolveRate { get; set; }
-    public int TotalTickets { get; set; }
-    public int ResolvedTickets { get; set; }
-    public int TotalInspections { get; set; }
-    public int PassedInspections { get; set; }
-    public int IssuesFound { get; set; }
-    public int IssuesResolved { get; set; }
-    public int TotalVisitors { get; set; }
-    public int ActiveVisitors { get; set; }
-}
+    try
+    {
+        var projectCode = context.Request.Headers["X-Project"].FirstOrDefault() ?? "wo_property";
+        var connStr = $"Server=127.0.0.1;Port=3306;Database={projectCode};User=root;Password=;CharSet=utf8mb4";
+        
+        await using var conn = new MySqlConnector.MySqlConnection(connStr);
+        await conn.OpenAsync();
+        
+        await using var cmd = new MySqlConnector.MySqlCommand("SELECT * FROM DeviceReports ORDER BY CreatedAt DESC LIMIT 100", conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        var results = new List<Dictionary<string, object?>>();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            results.Add(row);
+        }
+        
+        return Results.Ok(new { success = true, data = results });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { success = false, message = ex.Message });
+    }
+});
+
+// ==================== 工单报表 API ====================
+app.MapGet("/api/ticket-reports", async (HttpContext context) =>
+{
+    try
+    {
+        var projectCode = context.Request.Headers["X-Project"].FirstOrDefault() ?? "wo_property";
+        var connStr = $"Server=127.0.0.1;Port=3306;Database={projectCode};User=root;Password=;CharSet=utf8mb4";
+        
+        await using var conn = new MySqlConnector.MySqlConnection(connStr);
+        await conn.OpenAsync();
+        
+        await using var cmd = new MySqlConnector.MySqlCommand("SELECT * FROM TicketReports ORDER BY CreatedAt DESC LIMIT 100", conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        var results = new List<Dictionary<string, object?>>();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            results.Add(row);
+        }
+        
+        return Results.Ok(new { success = true, data = results });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { success = false, message = ex.Message });
+    }
+});
+
+// ==================== 物料报表 API ====================
+app.MapGet("/api/material-reports", async (HttpContext context) =>
+{
+    try
+    {
+        var projectCode = context.Request.Headers["X-Project"].FirstOrDefault() ?? "wo_property";
+        var connStr = $"Server=127.0.0.1;Port=3306;Database={projectCode};User=root;Password=;CharSet=utf8mb4";
+        
+        await using var conn = new MySqlConnector.MySqlConnection(connStr);
+        await conn.OpenAsync();
+        
+        await using var cmd = new MySqlConnector.MySqlCommand("SELECT * FROM MaterialReports ORDER BY CreatedAt DESC LIMIT 100", conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        var results = new List<Dictionary<string, object?>>();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            results.Add(row);
+        }
+        
+        return Results.Ok(new { success = true, data = results });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { success = false, message = ex.Message });
+    }
+});
+
+// ==================== 满意度调查 API ====================
+app.MapGet("/api/satisfaction-surveys", async (HttpContext context) =>
+{
+    try
+    {
+        var projectCode = context.Request.Headers["X-Project"].FirstOrDefault() ?? "wo_property";
+        var connStr = $"Server=127.0.0.1;Port=3306;Database={projectCode};User=root;Password=;CharSet=utf8mb4";
+        
+        await using var conn = new MySqlConnector.MySqlConnection(connStr);
+        await conn.OpenAsync();
+        
+        await using var cmd = new MySqlConnector.MySqlCommand("SELECT * FROM SatisfactionSurveys ORDER BY CreatedAt DESC LIMIT 100", conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        var results = new List<Dictionary<string, object?>>();
+        while (await reader.ReadAsync())
+        {
+            var row = new Dictionary<string, object?>();
+            for (int i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            results.Add(row);
+        }
+        
+        return Results.Ok(new { success = true, data = results });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { success = false, message = ex.Message });
+    }
+});
+
+app.Run();

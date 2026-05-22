@@ -384,9 +384,125 @@ public class FieldDefinitionsController : ControllerBase
             UpdatedAt = reader["UpdatedAt"] == DBNull.Value ? null : Convert.ToDateTime(reader["UpdatedAt"])
         };
     }
+    /// <summary>
+    /// 获取所有字段等价映射
+    /// </summary>
+    [HttpGet("~/api/field-equivalences")]
+    public async Task<IActionResult> GetAllEquivalences()
+    {
+        var sql = @"SELECT fe.*, fd.DisplayName as CanonicalDisplayName 
+                    FROM field_equivalences fe
+                    LEFT JOIN FieldDefinitions fd ON fd.FieldKey = fe.canonical_field AND fd.Module = fe.module
+                    ORDER BY fe.module, fe.canonical_field";
+        using var cmd = new MySqlCommand(sql, _db);
+        var items = new List<FieldEquivalenceResponse>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            items.Add(new FieldEquivalenceResponse
+            {
+                Id = Convert.ToInt32(reader["id"]),
+                CanonicalField = reader["canonical_field"].ToString() ?? "",
+                EquivalentField = reader["equivalent_field"].ToString() ?? "",
+                Module = reader["module"].ToString() ?? "",
+                FieldType = reader["field_type"].ToString() ?? "string",
+                DisplayName = reader["display_name"].ToString(),
+                CanonicalDisplayName = reader["CanonicalDisplayName"]?.ToString(),
+                Status = reader["status"].ToString() ?? "Active"
+            });
+        }
+        return Ok(new { Success = true, Data = items });
+    }
+
+    /// <summary>
+    /// 解析字段名到标准名（支持等价映射）
+    /// </summary>
+    [HttpPost("~/api/field-equivalences/resolve")]
+    public async Task<IActionResult> ResolveFields([FromBody] ResolveFieldsRequest request)
+    {
+        if (request.Fields == null || request.Fields.Length == 0)
+            return Ok(new { Success = true, Data = new Dictionary<string, string>() });
+
+        var result = new Dictionary<string, string>();
+        var placeholders = string.Join(",", request.Fields.Select((_, i) => $"@f{i}"));
+        var sql = $@"SELECT equivalent_field, canonical_field 
+                     FROM field_equivalences 
+                     WHERE equivalent_field IN ({placeholders})";
+        
+        using var cmd = new MySqlCommand(sql, _db);
+        for (int i = 0; i < request.Fields.Length; i++)
+            cmd.Parameters.AddWithValue($"@f{i}", request.Fields[i]);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var equiv = reader["equivalent_field"].ToString() ?? "";
+            var canon = reader["canonical_field"].ToString() ?? "";
+            result[equiv] = canon;
+            // 同时添加标准名（如果字段本身就是标准名）
+            if (!result.ContainsKey(canon))
+                result[canon] = canon;
+        }
+
+        // 对于没有等价映射的字段，直接返回自身
+        foreach (var field in request.Fields)
+        {
+            if (!result.ContainsKey(field))
+                result[field] = field;
+        }
+
+        return Ok(new { Success = true, Data = result });
+    }
+
+    /// <summary>
+    /// 获取某模块的等价映射列表
+    /// </summary>
+    [HttpGet("~/api/field-equivalences/module/{module}")]
+    public async Task<IActionResult> GetEquivalencesByModule(string module)
+    {
+        var sql = @"SELECT canonical_field, equivalent_field, display_name, field_type 
+                     FROM field_equivalences 
+                     WHERE module = @module";
+        using var cmd = new MySqlCommand(sql, _db);
+        cmd.Parameters.AddWithValue("@module", module);
+        var items = new List<object>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            items.Add(new 
+            {
+                CanonicalField = reader["canonical_field"].ToString(),
+                Equivalents = new[] { reader["equivalent_field"].ToString() },
+                DisplayName = reader["display_name"].ToString(),
+                FieldType = reader["field_type"].ToString()
+            });
+        }
+        return Ok(new { Success = true, Data = items });
+    }
 }
 
-// 本地模型（用于从数据库读取）
+// =====================================================
+// 字段等价映射相关 DTO
+// =====================================================
+
+public class ResolveFieldsRequest
+{
+    public string[] Fields { get; set; } = Array.Empty<string>();
+}
+
+public class FieldEquivalenceResponse
+{
+    public int Id { get; set; }
+    public string CanonicalField { get; set; } = string.Empty;
+    public string EquivalentField { get; set; } = string.Empty;
+    public string Module { get; set; } = string.Empty;
+    public string FieldType { get; set; } = "string";
+    public string? DisplayName { get; set; }
+    public string? CanonicalDisplayName { get; set; }
+    public string Status { get; set; } = "Active";
+}
+
+// 保留原有模型
 public class FieldDefinitionResponse
 {
     public int Id { get; set; }

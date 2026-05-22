@@ -5,7 +5,7 @@ import { ArrowRight } from '@element-plus/icons-vue'
 import { masterDataApi, type FieldDefinition } from '../api/masterDataService'
 
 // 等价组数据（蛇形命名 → 标准名）
-const equivalenceGroups: Record<string, string[]> = {
+const hardcodedEquivalenceGroups: Record<string, string[]> = {
   person_name: ['name', 'visitor_name', 'host_name', 'assigneeName', 'reporter_name', 'complainant_name', 'resident_name', 'cleaner_name', 'inspector_name', 'applicant_name', 'recipient_name', 'handlerName'],
   phone_number: ['phone', 'visitor_phone', 'host_phone', 'resident_phone', 'contact_phone', 'reporter_phone', 'emergency_phone', 'holder_phone', 'applicant_phone', 'recipient_phone', 'complainant_phone', 'delivery_phone'],
   status: ['handleStatus', 'deliveryStatus', 'paymentStatus', 'ticketTypeStatus'],
@@ -15,7 +15,7 @@ const equivalenceGroups: Record<string, string[]> = {
 
 // 别名 → 标准名映射
 const aliasToStandard: Record<string, string> = {}
-for (const [standard, aliases] of Object.entries(equivalenceGroups)) {
+for (const [standard, aliases] of Object.entries(hardcodedEquivalenceGroups)) {
   for (const alias of aliases) {
     aliasToStandard[alias] = standard
   }
@@ -52,12 +52,16 @@ const moduleNameMap: Record<string, string> = {
 
 // 字段标准名 → 别名列表
 const standardToAliases: Record<string, string[]> = {}
-for (const [standard, aliases] of Object.entries(equivalenceGroups)) {
+for (const [standard, aliases] of Object.entries(hardcodedEquivalenceGroups)) {
   standardToAliases[standard] = aliases
 }
 
 // 搜索过滤
 const searchKeyword = ref('')
+
+// Tab 状态
+const activeTab = ref('fields')
+
 
 // 展开状态
 const expandedModules = ref<Set<string>>(new Set())
@@ -67,6 +71,9 @@ const loading = ref(false)
 
 // 原始数据
 const allFields = ref<FieldDefinition[]>([])
+
+// 等价映射数据
+const equivalences = ref<any[]>([])
 
 // 弹窗状态
 const detailDialogVisible = ref(false)
@@ -102,6 +109,43 @@ const stats = computed(() => {
   const shared = allFields.value.filter(f => f.isShared).length
   const privateCount = total - shared
   return { total, shared, privateCount }
+})
+
+// 加载等价映射数据
+async function loadEquivalences() {
+  console.log('loadEquivalences called')
+  try {
+    const res = await fetch('http://localhost:5019/api/field-equivalences')
+    const data = await res.json()
+    console.log('API response:', data)
+    if (data.success) {
+      equivalences.value = data.data
+      console.log('equivalences loaded:', equivalences.value.length)
+    }
+  } catch (error) {
+    console.warn('加载等价映射失败:', error)
+  }
+}
+
+// 按标准字段分组等价映射
+const equivalenceGroups = computed(() => {
+  const groups = new Map<string, any[]>()
+  equivalences.value.forEach(eq => {
+    const key = eq.canonicalField + '|' + eq.module
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)!.push(eq)
+  })
+  return Array.from(groups.entries()).map(([key, items]) => {
+    const [canonicalField, module] = key.split('|')
+    return {
+      canonicalField,
+      module,
+      displayName: items[0].displayName || canonicalField,
+      equivalents: items
+    }
+  })
 })
 
 // 按 module 分组（module 有值则按模块展示，无值则为全局共享）
@@ -269,6 +313,7 @@ const isModuleExpanded = (mod: string) => expandedModules.value.has(mod)
 
 onMounted(() => {
   loadFields()
+  loadEquivalences()
   // 默认全部展开
   expandedModules.value.add('__shared__')
   allFields.value.forEach(f => {
@@ -293,7 +338,13 @@ onMounted(() => {
       <el-card class="stat-card"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">总字段数</div></el-card>
       <el-card class="stat-card"><div class="stat-value">{{ stats.shared }}</div><div class="stat-label">共享字段</div></el-card>
       <el-card class="stat-card"><div class="stat-value">{{ stats.privateCount }}</div><div class="stat-label">私有字段</div></el-card>
+      <el-card class="stat-card"><div class="stat-value">{{ equivalences.length }}</div><div class="stat-label">等价映射</div></el-card>
     </div>
+
+    <!-- Tab 切换 -->
+    <el-tabs v-model="activeTab" class="field-tabs">
+      <el-tab-pane label="字段列表" name="fields">
+
 
     <!-- 搜索 -->
     <div class="filter-row">
@@ -410,6 +461,46 @@ onMounted(() => {
       </el-card>
     </template>
 
+    <!-- 等价映射 Tab -->
+    <el-tab-pane label="等价映射" name="equivalence">
+      <el-card class="table-card">
+        <template #header>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>字段等价映射表（统一管理 PascalCase 与 snake_case 的等价关系）</span>
+            <el-button type="primary" size="small" @click="loadEquivalences">刷新</el-button>
+          </div>
+        </template>
+        <el-table :data="equivalenceGroups" stripe empty-text="暂无数据" v-loading="loading">
+          <el-table-column label="标准字段" width="180">
+            <template #default="{ row }">
+              <el-tag type="success" size="small">{{ row.canonicalField }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="displayName" label="显示名" width="120" />
+          <el-table-column prop="module" label="模块" width="120">
+            <template #default="{ row }">
+              <el-tag size="small">{{ row.module }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="等价字段">
+            <template #default="{ row }">
+              <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                <el-tag
+                  v-for="eq in row.equivalents"
+                  :key="eq.equivalentField"
+                  :type="eq.equivalentField === row.canonicalField ? 'success' : 'warning'"
+                  size="small"
+                >
+                  {{ eq.equivalentField }}
+                  <span v-if="eq.equivalentField !== row.canonicalField" style="font-size:10px; opacity:0.7"> 别名</span>
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+    </el-tab-pane>
+
     <!-- 字段详情/编辑弹窗 -->
     <el-dialog v-model="detailDialogVisible" title="字段详情" width="560px">
       <div v-if="editingField" class="field-detail">
@@ -464,7 +555,9 @@ onMounted(() => {
         <el-button type="primary" @click="submitCreate">创建</el-button>
       </template>
     </el-dialog>
-  </div>
+  </el-tab-pane>
+</el-tabs>
+</div>
 </template>
 
 <style scoped>
@@ -472,7 +565,7 @@ onMounted(() => {
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .header-left h1 { font-size: 24px; font-weight: 600; color: #1f2937; margin: 0 0 4px 0; }
 .header-left p { font-size: 14px; color: #6b7280; margin: 0; }
-.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card { text-align: center; }
 .stat-value { font-size: 32px; font-weight: bold; color: #409eff; }
 .stat-label { font-size: 14px; color: #6b7280; margin-top: 4px; }

@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, View, Bell, Check } from '@element-plus/icons-vue'
+import { expressApi } from '@/api/express'
 import { masterApi } from '@/api/http'
 
 const loading = ref(false)
@@ -49,17 +50,15 @@ const loadRooms = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/express-records', {
-      params: {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize,
-        status: statusFilter.value,
-        keyword: keyword.value || undefined,
-      }
+    const res: any = await expressApi.getRecords({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      status: statusFilter.value || undefined,
+      keyword: keyword.value || undefined,
     })
     if (res.success) {
       tableData.value = res.data || []
-      pagination.value = res.pagination || pagination.value
+      pagination.value.total = res.total || 0
     }
   } catch (e: any) { ElMessage.error(e.message || '加载失败') }
   finally { loading.value = false }
@@ -78,7 +77,7 @@ const openCreate = () => {
 
 const handleView = async (row: any) => {
   try {
-    const res: any = await masterApi.get(`/express-records/${row.id}`)
+    const res: any = await expressApi.getRecord(row.id)
     if (res.success) { detailData.value = res.data; detailVisible.value = true }
   } catch (e: any) { ElMessage.error(e.message || '加载详情失败') }
 }
@@ -86,7 +85,7 @@ const handleView = async (row: any) => {
 const handleInform = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确认通知住户「${row.recipientName}」取件？`, '通知确认', { type: 'info' })
-    await masterApi.put(`/express-records/${row.id}`, { status: 'informed' })
+    await expressApi.updateRecord(row.id, { status: 'informed' })
     ElMessage.success('已通知住户')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -95,7 +94,7 @@ const handleInform = async (row: any) => {
 const handlePickup = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认该快递已取件？', '确认取件', { type: 'info' })
-    await masterApi.put(`/express-records/${row.id}`, { status: 'picked', pickupTime: new Date().toISOString() })
+    await expressApi.updateRecord(row.id, { status: 'picked', pickupTime: new Date().toISOString().split('T')[0] })
     ElMessage.success('已确认取件')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -104,7 +103,7 @@ const handlePickup = async (row: any) => {
 const handleReturn = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认该快递已退回？', '确认退回', { type: 'warning' })
-    await masterApi.put(`/express-records/${row.id}`, { status: 'returned' })
+    await expressApi.updateRecord(row.id, { status: 'returned' })
     ElMessage.success('已标记退回')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -113,7 +112,7 @@ const handleReturn = async (row: any) => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除快递记录「${row.recipientName}」吗？`, '提示', { type: 'warning' })
-    await masterApi.delete(`/express-records/${row.id}`)
+    await expressApi.deleteRecord(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '删除失败') }
@@ -136,10 +135,18 @@ const handleSave = async () => {
       remarks: form.value.remarks || undefined,
     }
     if (isEdit.value && currentId.value) {
-      await masterApi.put(`/express-records/${currentId.value}`, payload)
+      await expressApi.updateRecord(currentId.value, { remarks: form.value.remarks })
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/express-records', payload)
+      await expressApi.createRecord({
+        roomId: form.value.roomId!,
+        recipientName: form.value.recipientName,
+        recipientPhone: form.value.recipientPhone || undefined,
+        courierCompany: form.value.courierCompany || undefined,
+        trackingNumber: form.value.trackingNumber || undefined,
+        pickupCode: form.value.pickupCode || undefined,
+        remarks: form.value.remarks || undefined,
+      })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

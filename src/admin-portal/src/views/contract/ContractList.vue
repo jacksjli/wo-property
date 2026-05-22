@@ -152,11 +152,25 @@ const handleSubmit = async () => {
   if (form.value.amount <= 0) { ElMessage.warning('请输入正确的合同金额'); return }
 
   try {
+    const payload = {
+      ContractNumber: form.value.contractNo,
+      ContractName: form.value.name,
+      ContractType: form.value.type,
+      PartyA: form.value.partyA,
+      PartyB: form.value.partyB,
+      SignedDate: form.value.signDate || null,
+      StartDate: form.value.startDate || null,
+      EndDate: form.value.endDate || null,
+      Amount: form.value.amount,
+      Status: 'draft',
+      AttachmentUrl: null,
+      Remarks: form.value.remark || null,
+    }
     if (editingId.value) {
-      await masterApi.put(`/contracts/${editingId.value}`, form.value)
+      await masterApi.put(`/contracts/${editingId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/contracts', { ...form.value, status: 'draft' })
+      await masterApi.post('/contracts', payload)
       ElMessage.success('添加成功')
     }
     dialogVisible.value = false

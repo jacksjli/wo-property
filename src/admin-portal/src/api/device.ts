@@ -2,13 +2,13 @@ import { deviceApi } from './http'
 
 // API 端点
 const ENDPOINTS = {
-  DEVICES: '/api/devices',
-  DEVICE: (id: number) => `/api/devices/${id}`,
-  DEVICE_CATEGORIES: '/api/device-categories',
-  LOCATIONS: '/api/locations',
-  STATISTICS: '/api/devices/statistics',
-  MAINTENANCE_HISTORY: (deviceId: number) => `/api/devices/${deviceId}/maintenance-history`,
-  MAINTENANCE: (deviceId: number) => `/api/devices/${deviceId}/maintenance`,
+  DEVICES: '/api/tenant/devices',
+  DEVICE: (id: number) => `/api/tenant/devices/${id}`,
+  DEVICE_CATEGORIES: '/api/tenant/device-categories',
+  LOCATIONS: '/api/tenant/locations',
+  STATISTICS: '/api/tenant/devices/statistics',
+  MAINTENANCE_HISTORY: (deviceId: number) => `/api/tenant/devices/${deviceId}/maintenance-history`,
+  MAINTENANCE: (deviceId: number) => `/api/tenant/devices/${deviceId}/maintenance`,
 }
 
 // 获取设备列表

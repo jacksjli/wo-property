@@ -130,7 +130,14 @@ public class TenantTicketController : ControllerBase
             CreatorPersonId = creatorId,
             AssigneePersonId = null,
             ProjectId = request.ProjectId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            TicketTypeId = request.TicketTypeId,
+            AreaId = request.AreaId,
+            BuildingId = request.BuildingId,
+            RoomId = request.RoomId,
+            ContactPersonName = request.ContactPersonName,
+            ContactPhone = request.ContactPhone,
+            Location = request.Location,
         };
 
         db.Tickets.Add(ticket);
@@ -153,6 +160,9 @@ public class TenantTicketController : ControllerBase
         if (!string.IsNullOrEmpty(request.Status)) ticket.Status = request.Status;
         if (!string.IsNullOrEmpty(request.Priority)) ticket.Priority = request.Priority;
         if (!string.IsNullOrEmpty(request.Category)) ticket.Category = request.Category;
+        if (!string.IsNullOrEmpty(request.ContactPersonName)) ticket.ContactPersonName = request.ContactPersonName;
+        if (!string.IsNullOrEmpty(request.ContactPhone)) ticket.ContactPhone = request.ContactPhone;
+        if (!string.IsNullOrEmpty(request.Location)) ticket.Location = request.Location;
 
         ticket.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
@@ -185,6 +195,13 @@ public class TenantCreateTicketRequest
     public string? Location { get; set; }
     public int ProjectId { get; set; }
     public List<string>? Images { get; set; }
+    public int? TicketTypeId { get; set; }
+    public int? AreaId { get; set; }
+    public int? BuildingId { get; set; }
+    public int? RoomId { get; set; }
+    public List<int>? JobTypeIds { get; set; }
+    public string? ContactPersonName { get; set; }
+    public string? ContactPhone { get; set; }
 }
 
 public class TenantUpdateTicketRequest
@@ -194,4 +211,11 @@ public class TenantUpdateTicketRequest
     public string? Status { get; set; }
     public string? Priority { get; set; }
     public string? Category { get; set; }
+    public int? TicketTypeId { get; set; }
+    public int? AreaId { get; set; }
+    public int? BuildingId { get; set; }
+    public int? RoomId { get; set; }
+    public string? ContactPersonName { get; set; }
+    public string? ContactPhone { get; set; }
+    public string? Location { get; set; }
 }

@@ -68,14 +68,15 @@ public class DeviceTypesController : ControllerBase
         if (Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0)
             return BadRequest(new { success = false, message = $"设备类型编号 '{req.Code}' 已存在" });
 
-        var sql = @"INSERT INTO DeviceTypes (Name, Code, Description, Category, Status)
-                    VALUES (@Name, @Code, @Description, @Category, @Status);
+        var sql = @"INSERT INTO DeviceTypes (Name, Code, Description, Category, SortOrder, Status)
+                    VALUES (@Name, @Code, @Description, @Category, @SortOrder, @Status);
                     SELECT LAST_INSERT_ID();";
         using var cmd = new MySqlCommand(sql, _db);
         cmd.Parameters.AddWithValue("@Name", req.Name);
         cmd.Parameters.AddWithValue("@Code", req.Code);
         cmd.Parameters.AddWithValue("@Description", (object)req.Description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Category", (object)req.Category ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@SortOrder", req.SortOrder);
         cmd.Parameters.AddWithValue("@Status", req.Status ?? "Active");
         var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
@@ -91,14 +92,16 @@ public class DeviceTypesController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "设备类型不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
-        var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Category = @category", "Status = @status", "UpdatedAt = @updatedAt" };
+        var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Category = @category", "SortOrder = @sortOrder", "Status = @status", "UpdatedAt = @updatedAt" };
         using var cmd = new MySqlCommand($"UPDATE DeviceTypes SET {string.Join(", ", updates)} WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@name", req.Name);
         cmd.Parameters.AddWithValue("@code", req.Code);
         cmd.Parameters.AddWithValue("@description", (object)req.Description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@category", (object)req.Category ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@sortOrder", req.SortOrder);
         cmd.Parameters.AddWithValue("@status", req.Status ?? "Active");
         cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
         await cmd.ExecuteNonQueryAsync();
@@ -126,6 +129,7 @@ public class DeviceTypesController : ControllerBase
         Code = r["Code"].ToString() ?? "",
         Description = r["Description"] as string,
         Category = r["Category"] as string,
+        SortOrder = Convert.ToInt32(r["SortOrder"]),
         Status = r["Status"].ToString() ?? "Active",
         CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
         UpdatedAt = r["UpdatedAt"] == DBNull.Value ? null : Convert.ToDateTime(r["UpdatedAt"])
@@ -140,6 +144,7 @@ public class DeviceTypeItem
     public string? Description { get; set; }
     public string? Category { get; set; }
     public string Status { get; set; } = "Active";
+    public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

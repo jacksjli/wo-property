@@ -5,7 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting, UserFilled, MoreFilled } from '@e
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { visitorApi } from '@/api/visitor'
 import { useFieldConfig } from '@/composables/useFieldConfig'
 
 // 权限验证
@@ -119,7 +119,7 @@ const typeOptions = Object.entries(visitorTypeLabels).map(([value, label]) => ({
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/visitors', { params: { page: 1, pageSize: 200 } })
+    const res: any = await visitorApi.getList({ page: 1, pageSize: 200, status: filterStatus.value || undefined })
     if (res.success) {
       visitors.value = res.data || []
     }
@@ -201,11 +201,24 @@ const handleSubmit = async () => {
   }
 
   try {
+    const payload = {
+      visitorName: form.value.visitorName,
+      visitorPhone: form.value.visitorPhone || undefined,
+      idCardNumber: form.value.idCardNumber || undefined,
+      visitPurpose: form.value.visitPurpose || undefined,
+      visitDate: form.value.visitDate ? new Date(form.value.visitDate) : undefined,
+      visitTime: form.value.visitTime ? new Date(`1970-01-01T${form.value.visitTime}`).getTime() / 1000 : undefined,
+      buildingId: form.value.buildingId || undefined,
+      roomId: form.value.roomId || undefined,
+      hostName: form.value.hostName,
+      hostPhone: form.value.hostPhone || undefined,
+      remarks: form.value.remark || undefined,
+    }
     if (editingId.value) {
-      await masterApi.put(`/visitors/${editingId.value}`, form.value)
+      await visitorApi.update(editingId.value, { remarks: form.value.remark })
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/visitors', form.value)
+      await visitorApi.create(payload)
       ElMessage.success('访客登记成功')
     }
     dialogVisible.value = false
@@ -223,7 +236,7 @@ const handleDelete = async (row: any) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await masterApi.delete(`/visitors/${row.id}`)
+    await visitorApi.delete(row.id)
     ElMessage.success('删除成功')
     await loadData()
   } catch (e: any) {
@@ -245,7 +258,7 @@ const handleCheckIn = async (row: any) => {
       cancelButtonText: '取消',
       type: 'info'
     })
-    await masterApi.post(`/visitors/${row.id}/check-in`)
+    await visitorApi.checkIn(row.id)
     ElMessage.success('访客已进入')
     await loadData()
   } catch (e: any) {
@@ -261,7 +274,7 @@ const handleCheckOut = async (row: any) => {
       cancelButtonText: '取消',
       type: 'info'
     })
-    await masterApi.post(`/visitors/${row.id}/check-out`)
+    await visitorApi.checkOut(row.id)
     ElMessage.success('访客已离开')
     await loadData()
   } catch (e: any) {

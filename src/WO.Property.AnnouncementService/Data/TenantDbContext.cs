@@ -15,6 +15,14 @@ public class TenantDbContext : DbContext
     private readonly ILogger<TenantDbContext> _logger;
 
     public DbSet<Announcement> Announcements => Set<Announcement>();
+    public DbSet<DeviceReport> DeviceReports => Set<DeviceReport>();
+    public DbSet<TicketReport> TicketReports => Set<TicketReport>();
+    public DbSet<MaterialReport> MaterialReports => Set<MaterialReport>();
+    public DbSet<SatisfactionSurvey> SatisfactionSurveys => Set<SatisfactionSurvey>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<StockTransaction> StockTransactions => Set<StockTransaction>();
+    public DbSet<EnumDefinition> EnumDefinitions => Set<EnumDefinition>();
+    public DbSet<GeneralReport> GeneralReports => Set<GeneralReport>();
 
     public TenantDbContext(
         DbContextOptions<TenantDbContext> options,
@@ -62,6 +70,127 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.PublishTime);
             entity.Ignore(e => e.ViewCount);
             entity.Ignore(e => e.ProjectId);
+        });
+
+        modelBuilder.Entity<DeviceReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("DeviceReports");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Code).HasColumnName("Code");
+            entity.Property(e => e.Name).HasColumnName("Name");
+            entity.Property(e => e.Status).HasColumnName("Status");
+            entity.Property(e => e.MaintenanceType).HasColumnName("MaintenanceType");
+            entity.Property(e => e.MaintenanceCost).HasColumnName("MaintenanceCost");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+        });
+
+        modelBuilder.Entity<TicketReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("TicketReports");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.TicketNumber).HasColumnName("TicketNumber");
+            entity.Property(e => e.Title).HasColumnName("Title");
+            entity.Property(e => e.Status).HasColumnName("Status");
+            entity.Property(e => e.Priority).HasColumnName("Priority");
+            entity.Property(e => e.AssignedTo).HasColumnName("AssignedTo");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.ResolvedAt).HasColumnName("ResolvedAt");
+        });
+
+        modelBuilder.Entity<MaterialReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("MaterialReports");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Code).HasColumnName("Code");
+            entity.Property(e => e.Name).HasColumnName("Name");
+            entity.Property(e => e.CurrentStock).HasColumnName("CurrentStock");
+            entity.Property(e => e.SafetyStock).HasColumnName("SafetyStock");
+            entity.Property(e => e.UnitPrice).HasColumnName("UnitPrice");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+        });
+
+        modelBuilder.Entity<SatisfactionSurvey>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("satisfaction_surveys");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.TicketId).HasColumnName("ticket_id");
+            entity.Property(e => e.Rating).HasColumnName("rating");
+            entity.Property(e => e.Comment).HasColumnName("comment");
+            entity.Property(e => e.RespondentName).HasColumnName("respondent_name");
+            entity.Property(e => e.SubmittedAt).HasColumnName("submitted_at");
+        });
+
+        modelBuilder.Entity<PurchaseOrder>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("PurchaseOrders");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.OrderNumber).HasColumnName("OrderNumber");
+            entity.Property(e => e.OrderDate).HasColumnName("OrderDate");
+            entity.Property(e => e.Supplier).HasColumnName("Supplier");
+            entity.Property(e => e.TotalAmount).HasColumnName("TotalAmount");
+            entity.Property(e => e.Status).HasColumnName("Status");
+            entity.Property(e => e.Notes).HasColumnName("Notes");
+            entity.Property(e => e.CreatedBy).HasColumnName("CreatedBy");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.UpdatedBy).HasColumnName("UpdatedBy");
+            entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+            entity.Property(e => e.IsDeleted).HasColumnName("IsDeleted");
+        });
+
+        modelBuilder.Entity<StockTransaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("StockTransactions");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.MaterialId).HasColumnName("MaterialId");
+            entity.Property(e => e.TransactionType).HasColumnName("TransactionType");
+            entity.Property(e => e.Quantity).HasColumnName("Quantity");
+            entity.Property(e => e.UnitPrice).HasColumnName("UnitPrice");
+            entity.Property(e => e.TotalAmount).HasColumnName("TotalAmount");
+            entity.Property(e => e.Operator).HasColumnName("Operator");
+            entity.Property(e => e.Notes).HasColumnName("Notes");
+            entity.Property(e => e.CreatedBy).HasColumnName("CreatedBy");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.UpdatedBy).HasColumnName("UpdatedBy");
+            entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+            entity.Property(e => e.IsDeleted).HasColumnName("IsDeleted");
+        });
+
+        modelBuilder.Entity<EnumDefinition>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("EnumDefinitions");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Category).HasColumnName("Category");
+            entity.Property(e => e.Code).HasColumnName("Code");
+            entity.Property(e => e.Name).HasColumnName("Name");
+            entity.Property(e => e.Description).HasColumnName("Description");
+            entity.Property(e => e.SortOrder).HasColumnName("SortOrder");
+            entity.Property(e => e.IsActive).HasColumnName("IsActive");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+        });
+
+        modelBuilder.Entity<GeneralReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("Reports");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.ReportNumber).HasColumnName("ReportNumber");
+            entity.Property(e => e.Title).HasColumnName("Title");
+            entity.Property(e => e.Type).HasColumnName("Type");
+            entity.Property(e => e.Category).HasColumnName("Category");
+            entity.Property(e => e.StartDate).HasColumnName("StartDate");
+            entity.Property(e => e.EndDate).HasColumnName("EndDate");
+            entity.Property(e => e.Data).HasColumnName("Data");
+            entity.Property(e => e.Summary).HasColumnName("Summary");
+            entity.Property(e => e.GeneratedBy).HasColumnName("GeneratedBy");
+            entity.Property(e => e.GeneratedAt).HasColumnName("GeneratedAt");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
         });
     }
 }

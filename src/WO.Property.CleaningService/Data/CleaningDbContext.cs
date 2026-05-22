@@ -19,8 +19,8 @@ public class CleaningDbContext : DbContext
         );
 
         modelBuilder.Entity<CleaningTask>().HasData(
-            new CleaningTask { Id = 1, StaffId = 1, Location = "东区1号楼", Content = "大厅、走廊、楼梯打扫", PlanDate = DateTime.Today, Status = "pending", ProjectId = 1 },
-            new CleaningTask { Id = 2, StaffId = 2, Location = "西区中心花园", Content = "绿化带垃圾清理", PlanDate = DateTime.Today, Status = "in_progress", ProjectId = 1 }
+            new CleaningTask { Id = 1, BuildingId = 1, CleaningArea = "东区1号楼", CleanerName = "张保洁", PlanDate = DateTime.Today, Status = "pending" },
+            new CleaningTask { Id = 2, BuildingId = 2, CleaningArea = "西区中心花园", CleanerName = "李保洁", PlanDate = DateTime.Today, Status = "in_progress" }
         );
     }
 }

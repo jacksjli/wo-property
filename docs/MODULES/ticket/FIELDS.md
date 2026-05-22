@@ -1,8 +1,9 @@
 # 工单模块字段定义
 
-> **版本**：v1.0
+> **版本**：v1.1
 > **模块**：ticket
-> **最后更新**：2026-05-05
+> **最后更新**：2026-05-19
+> **状态**：已确认（反映当前实际实现）
 
 ---
 
@@ -10,130 +11,150 @@
 
 **数据库表**: Tickets (TicketService)
 
-| 序号 | 显示名 | 字段名 | 类型 | 分类 | 来源服务 | API端点 | 必填 |
-|------|--------|--------|------|------|----------|---------|------|
-| 1 | 工单编号 | ticketNo | text | 私有 | TicketService | - | 是 |
-| 2 | 工单标题 | title | text | 私有 | TicketService | - | 是 |
-| 3 | 工单类型 | type | select | 共享 | MasterDataService | GET /api/enums/ticket-types | 是 |
-| 4 | 优先级 | priority | select | 共享 | MasterDataService | GET /api/enums/priorities | 是 |
-| 5 | 工单状态 | status | select | 共享 | MasterDataService | GET /api/enums/ticket-statuses | 是 |
-| 6 | 工单描述 | description | textarea | 私有 | TicketService | - | 否 |
-| 7 | 创建人 | creatorName | text | 共享 | PersonService | GET /api/persons/{id} | 否 |
-| 8 | 创建时间 | createTime | date | 私有 | 系统 | - | 否 |
-| 9 | 指派人 | assigneeName | text | 共享 | PersonService | GET /api/persons/{id} | 否 |
-| 10 | 处理时间 | handleTime | date | 私有 | TicketService | - | 否 |
-| 11 | 完成时间 | completeTime | date | 私有 | TicketService | - | 否 |
-| 12 | 联系人 | contactName | text | 共享 | PersonService | - | 否 |
-| 13 | 联系电话 | contactPhone | text | 共享 | PersonService | - | 否 |
-| 14 | 位置 | location | text | 共享 | MasterDataService | - | 否 |
-| 15 | 备注 | remark | textarea | 共享 | 系统 | - | 否 |
+| 序号 | 显示名 | 字段名 | 类型 | 分类 | 来源 | 必填 | 说明 |
+|------|--------|--------|------|------|------|------|------|
+| 1 | 工单编号 | ticketCode | text | 私有 | 后端自动生成 | 是 | 格式: REPAIR20260500001 |
+| 2 | 工单标题 | title | text | 私有 | 前端/后端自动 | 是 | 创建时可自动以工单类型名称填充 |
+| 3 | 工单类型 | ticketTypeId | select | 共享 | MasterDataService /api/ticket-types | 是 | 下拉选择，实际存储 TicketType(varchar) |
+| 4 | 优先级 | priority | select | 共享 | 前端 hardcode | 是 | urgent/high/normal/low |
+| 5 | 工单状态 | status | select | 共享 | 后端 | 是 | New/Pending/Dispatched/Accepted... |
+| 6 | 工单描述 | description | textarea | 私有 | 前端 | 否 | |
+| 7 | 区域 | areaId | select | 私有 | MasterDataService /api/hierarchy/areas | 否 | 三级联动第1级 |
+| 8 | 楼栋 | buildingId | select | 私有 | MasterDataService /api/hierarchy/area-buildings | 否 | 三级联动第2级 |
+| 9 | 房号 | roomId | select | 私有 | MasterDataService 级联加载 | 否 | 三级联动第3级 |
+| 10 | 工种 | jobTypeIds | checkbox | 共享 | MasterDataService /api/job-types | 否 | 多选，按工单类型分组显示 |
+| 11 | 联系人 | contactName | text | 共享 | 前端 | 否 | |
+| 12 | 联系电话 | contactPhone | text | 共享 | 前端 | 否 | |
+| 13 | 位置 | location | text | 共享 | 前端 | 否 | |
+| 14 | 项目ID | projectId | int | 私有 | 前端固定传1 | 是 | 当前固定值 1 |
 
 ---
 
-## 2. 共享字段来源汇总
+## 2. 前端表单字段（TicketList.vue 当前实现）
 
-### 2.1 MasterDataService 提供
-
-| 字段名 | API 端点 | 说明 |
-|--------|----------|------|
-| type | GET /api/enums/ticket-types | 工单类型 |
-| priority | GET /api/enums/priorities | 优先级 |
-| status | GET /api/enums/ticket-statuses | 工单状态 |
-| location | - | 位置信息（可手动输入或选择） |
-
-### 2.2 PersonService 提供
-
-| 字段名 | API 端点 | 说明 |
-|--------|----------|------|
-| creatorName | GET /api/persons/{id} | 创建人姓名 |
-| assigneeName | GET /api/persons/{id} | 指派人姓名 |
-| contactName | - | 联系人姓名 |
-| contactPhone | - | 联系电话 |
-
-### 2.3 系统字段
-
-| 字段名 | 说明 |
-|--------|------|
-| createTime | 创建时间 |
-| remark | 备注 |
-
----
-
-## 3. 枚举值来源
-
-### 3.1 工单类型 (ticket-types)
-
-```json
-[
-  { "code": "Repair", "name": "维修" },
-  { "code": "Access", "name": "放行" },
-  { "code": "Cleaning", "name": "清洁" },
-  { "code": "Security", "name": "安保" },
-  { "code": "Other", "name": "其他" }
-]
-```
-
-### 3.2 优先级 (priorities)
-
-```json
-[
-  { "code": "Urgent", "name": "紧急", "value": 1 },
-  { "code": "High", "name": "高", "value": 2 },
-  { "code": "Normal", "name": "普通", "value": 3 },
-  { "code": "Low", "name": "低", "value": 4 }
-]
-```
-
-### 3.3 工单状态 (ticket-statuses)
-
-```json
-[
-  { "code": "Created", "name": "已创建" },
-  { "code": "Dispatched", "name": "已派单" },
-  { "code": "Accepted", "name": "已接单" },
-  { "code": "Rejected", "name": "已拒单" },
-  { "code": "InProgress", "name": "处理中" },
-  { "code": "Finished", "name": "已完工" },
-  { "code": "Confirmed", "name": "已确认" },
-  { "code": "Closed", "name": "已关闭" }
-]
-```
-
----
-
-## 4. 前端配置示例
+### 2.1 创建工单表单
 
 ```typescript
-// fieldConfig.ts 工单字段配置
-const TICKET_FIELDS = [
-  // 私有字段
-  { key: 'ticketNo', name: '工单编号', type: 'text', source: 'local', required: true },
-  { key: 'title', name: '工单标题', type: 'text', source: 'local', required: true },
-  { key: 'description', name: '工单描述', type: 'textarea', source: 'local' },
-  
-  // API 字段
-  { key: 'type', name: '工单类型', type: 'select', source: 'api', 
-    apiEndpoint: '/enums/ticket-types', apiService: 'masterdata', required: true },
-  { key: 'priority', name: '优先级', type: 'select', source: 'api',
-    apiEndpoint: '/enums/priorities', apiService: 'masterdata', required: true },
-  { key: 'status', name: '工单状态', type: 'select', source: 'api',
-    apiEndpoint: '/enums/ticket-statuses', apiService: 'masterdata' },
-  
-  // 人员字段
-  { key: 'creatorName', name: '创建人', type: 'text', source: 'api', 
-    apiEndpoint: '/persons', apiService: 'person' },
-  { key: 'assigneeName', name: '指派人', type: 'text', source: 'api',
-    apiEndpoint: '/persons', apiService: 'person' },
-  
-  // 系统字段
-  { key: 'createTime', name: '创建时间', type: 'date', source: 'system' },
-  { key: 'remark', name: '备注', type: 'textarea', source: 'system' },
-]
+const form = ref({
+  ticketTypeId: null as number | null,  // 工单类型
+  title: '',                            // 自动以类型名称填充
+  description: '',                      // 工单描述
+  type: 'Repair',                       // 内部类型（保留）
+  priority: 'Normal',                   // 优先级
+  contactName: '',                      // 联系人
+  contactPhone: '',                     // 联系电话
+  locationId: null as number | null,   // 位置ID（保留）
+  areaId: null as number | null,        // 区域ID
+  buildingId: null as number | null,    // 楼栋ID
+  roomId: null as number | null,        // 房号ID
+  jobTypeIds: [] as number[]            // 工种多选
+})
+```
+
+### 2.2 级联选择器
+
+- **区域下拉**：`GET /api/hierarchy/areas` → `areas[]`
+- **楼栋下拉**：`GET /api/hierarchy/area-buildings?areaId=X` → `buildings[]`
+- **房号下拉**：从已加载楼栋数据的 `.rooms` 属性读取，不另发请求
+
+### 2.3 工种多选（按工单类型分组）
+
+```typescript
+const groupedJobTypes = computed(() => {
+  // 根据选中的 ticketTypeId，从 ticketTypes.jobTypes 中过滤
+  // 返回 [{ name: '维修', items: [{id, name}, ...] }]
+})
 ```
 
 ---
 
-**文档版本**：v1.0
-**作者**：前端工程师
+## 3. 后端接收字段（TenantCreateTicketRequest）
+
+```csharp
+public class TenantCreateTicketRequest
+{
+    public string Title { get; set; } = "";
+    public string? Description { get; set; }
+    public string? Category { get; set; }
+    public int? TicketTypeId { get; set; }    // 前端传来的工单类型ID
+    public string? Priority { get; set; }       // "Normal" / "Medium" 等
+    public string? Location { get; set; }
+    public int ProjectId { get; set; }         // 固定传 1
+    public List<string>? Images { get; set; }
+}
+```
+
+**注意**：当前后端 `TenantCreateTicketRequest` **不接收** `areaId`、`buildingId`、`roomId`、`jobTypeIds`。这些字段前端暂存，但未提交到后端。
+
+---
+
+## 4. API 字段映射
+
+| 前端字段 | 后端 TenantCreateTicketRequest | 数据库列 | 说明 |
+|----------|-------------------------------|----------|------|
+| ticketTypeId | TicketTypeId | ticket_types.id | 外键关联类型 |
+| title | Title | Title | 直接映射 |
+| description | Description | Description | 直接映射 |
+| priority | Priority | Priority | varchar |
+| projectId | ProjectId | project_id | INT |
+| areaId | - (未传) | - | 前端暂存 |
+| buildingId | - (未传) | - | 前端暂存 |
+| roomId | - (未传) | - | 前端暂存 |
+| jobTypeIds | - (未传) | - | 前端暂存 |
+
+---
+
+## 5. 共享字段来源
+
+| 字段 | 来源服务 | API端点 | 说明 |
+|------|---------|---------|------|
+| 工单类型 | TicketService | GET /api/ticket-types | 内嵌 jobTypes |
+| 工种 | MasterDataService | GET /api/job-types | 按 ticket_type_id 分组 |
+| 区域 | MasterDataService | GET /api/hierarchy/areas | |
+| 楼栋 | MasterDataService | GET /api/hierarchy/area-buildings?areaId=X | |
+| 部门 | MasterDataService | GET /api/departments | 用于工种分类 |
+
+---
+
+## 6. 枚举值
+
+### 6.1 工单状态
+
+| code | name | 说明 |
+|------|------|------|
+| New | 新建 | 工单创建 |
+| Pending | 待派单 | 等待调度 |
+| Dispatched | 已派单 | 已指派处理人 |
+| Accepted | 已接单 | 处理人已接单 |
+| Rejected | 已拒单 | 处理人拒单 |
+| Processing | 处理中 | 处理中 |
+| Finished | 已完工 | 申请完工 |
+| Confirmed | 已确认 | 确认完工 |
+| Closed | 已关闭 | 完成 |
+
+### 6.2 优先级
+
+| code | name | 说明 |
+|------|------|------|
+| Urgent | 紧急 | 优先级 1 |
+| High | 高 | 优先级 2 |
+| Normal | 普通 | 优先级 3（默认值） |
+| Low | 低 | 优先级 4 |
+
+### 6.3 工单类型
+
+| code | name | 说明 |
+|------|------|------|
+| REPAIR | 维修 | 默认类型 |
+| SAFETY | 安保 | |
+| CONSULT | 咨询 | |
+| URGENT | 紧急 | |
+| CLEANING | 清洁 | |
+| COMPLAINT | 投诉 | |
+
+---
+
+**文档版本**：v1.1
+**作者**：软件项目负责人
 **审核**：软件架构师
-**状态**：已确认
+**状态**：已确认（反映 2026-05-19 实际实现）

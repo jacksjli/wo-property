@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { auth } from '../api/auth'
+import ProjectSelectorDialog from '../components/ProjectSelectorDialog.vue'
 
 const router = useRouter()
 
 const loginForm = ref({
-  tenantCode: 'tenant_a',
-  username: 'admin_a',
-  password: 'Test@123'
+  username: 'admin',
+  password: 'Admin@123'
 })
 
 const loading = ref(false)
+const showProjectSelector = ref(false)
+const projectList = ref<Array<{ code: string; name: string; displayName?: string }>>([])
+const loginToken = ref('')
 
 const handleLogin = async () => {
   if (!loginForm.value.username || !loginForm.value.password) {
@@ -22,17 +25,39 @@ const handleLogin = async () => {
 
   loading.value = true
   try {
+    // Login via CenterService (5016) which returns project list
     const response = await auth.login(
       loginForm.value.username,
-      loginForm.value.password,
-      loginForm.value.tenantCode
+      loginForm.value.password
     )
 
-    if (response.success && response.data?.token) {
-      localStorage.setItem('auth_token', response.data.token)
-      localStorage.setItem('user', JSON.stringify(response.data))
-      ElMessage.success('登录成功')
-      router.push('/')
+    if (response.success && response.token) {
+      // Store auth info (use 'token' key for router guard compatibility)
+      localStorage.setItem('token', response.token)
+      localStorage.setItem('user', JSON.stringify(response.user || response))
+      loginToken.value = response.token
+      
+      // Extract project list from response
+      // CenterService returns: { token, projects: [{code, name, ...}], user }
+      const projects = response.projects || []
+      
+      if (projects.length === 0) {
+        ElMessage.error('该账号没有可访问的项目')
+        return
+      }
+      
+      console.log('[Login] Projects:', JSON.stringify(projects))
+      console.log('[Login] showProjectSelector will be set to:', projects.length > 1)
+      console.log('[Login] projectList will be:', JSON.stringify(projects))
+      
+      if (projects.length === 1) {
+        // Only one project - auto select
+        selectProject(projects[0])
+      } else {
+        // Multiple projects - go directly to project selection page
+        localStorage.setItem('pendingProjects', JSON.stringify(projects))
+        router.push('/project')
+      }
     } else {
       ElMessage.error(response.message || '登录失败')
     }
@@ -42,6 +67,25 @@ const handleLogin = async () => {
     loading.value = false
   }
 }
+
+const selectProject = (project: { code: string; name: string }) => {
+  console.log('[selectProject] called with:', project)
+  localStorage.setItem('currentProject', project.code)
+  localStorage.setItem('currentProjectName', project.name)
+  
+  showProjectSelector.value = false
+  ElMessage.success(`已进入项目：${project.name}`)
+  console.log('[selectProject] calling router.push("/")')
+  router.push('/project').then(() => {
+    console.log('[selectProject] navigation complete')
+  }).catch(err => {
+    console.error('[selectProject] navigation error:', err)
+  })
+}
+
+const handleProjectSelected = (project: { code: string; name: string }) => {
+  selectProject(project)
+}
 </script>
 
 <template>
@@ -50,21 +94,10 @@ const handleLogin = async () => {
       <div class="login-header">
         <el-icon size="48" color="#409eff"><House /></el-icon>
         <h1>WO物业管理</h1>
-        <p>物业管理系统（多租户版）</p>
+        <p>单租户多项目版</p>
       </div>
 
       <el-form :model="loginForm" class="login-form">
-        <el-form-item>
-          <el-select
-            v-model="loginForm.tenantCode"
-            placeholder="选择物业"
-            size="large"
-            style="width: 100%"
-          >
-            <el-option label="阳光物业 (tenant_a)" value="tenant_a" />
-            <el-option label="绿城物业 (tenant_b)" value="tenant_b" />
-          </el-select>
-        </el-form-item>
         <el-form-item>
           <el-input
             v-model="loginForm.username"
@@ -97,9 +130,16 @@ const handleLogin = async () => {
       </el-form>
 
       <div class="login-footer">
-        <p>测试账号: admin_a/Test@123 | admin_b/Test@123</p>
+        <p>测试账号: admin/Admin@123</p>
       </div>
     </div>
+
+    <!-- Project Selector Dialog -->
+    <ProjectSelectorDialog
+      v-model:visible="showProjectSelector"
+      :projects="projectList"
+      @select="handleProjectSelected"
+    />
   </div>
 </template>
 

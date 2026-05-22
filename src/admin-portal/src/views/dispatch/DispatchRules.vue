@@ -7,6 +7,7 @@ import { usePermission } from '@/composables/usePermission'
 import {
   getAllRules,
   getStats,
+  loadRulesFromApi,
   addRule,
   updateRule,
   deleteRule,
@@ -163,17 +164,17 @@ const handleEdit = (row: DispatchRule) => {
 }
 
 // 提交表单
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (!form.value.name.trim()) {
     ElMessage.warning('请输入规则名称')
     return
   }
 
   if (editingId.value) {
-    updateRule(editingId.value, form.value)
+    await updateRule(editingId.value, form.value)
     ElMessage.success('规则已更新')
   } else {
-    addRule({
+    await addRule({
       ...form.value,
       createdBy: 'admin'
     })
@@ -192,7 +193,8 @@ const handleDelete = async (row: DispatchRule) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    deleteRule(row.id)
+    await deleteRule(row.id)
+    await loadRulesFromApi()
     rules.value = getAllRules()
     ElMessage.success('规则已删除')
   } catch {

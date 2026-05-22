@@ -444,20 +444,20 @@ const handleSubmit = async () => {
     return
   }
   const payload = {
-    recordNumber: form.value.transactionNo,
-    type: form.value.type,
-    category: form.value.category,
-    amount: form.value.amount,
-    paymentMethod: form.value.paymentMethod,
-    recordDate: form.value.date,
-    handler: form.value.handler,
-    relatedParty: form.value.relatedParty,
-    contractNo: form.value.contractNo,
-    billNo: form.value.billNo,
-    description: form.value.description,
-    receiptNo: form.value.receiptNo,
-    status: form.value.status,
-    remarks: form.value.remark
+    RecordNumber: form.value.transactionNo,
+    Type: form.value.type,
+    Category: form.value.category,
+    Amount: form.value.amount,
+    PaymentMethod: form.value.paymentMethod,
+    RecordDate: form.value.date,
+    Handler: form.value.handler,
+    RelatedParty: form.value.relatedParty,
+    ContractNo: form.value.contractNo,
+    BillNo: form.value.billNo,
+    Description: form.value.description,
+    ReceiptNo: form.value.receiptNo,
+    Status: form.value.status,
+    Remarks: form.value.remark,
   }
   try {
     if (editingId.value) {

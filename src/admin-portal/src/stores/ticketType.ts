@@ -12,35 +12,11 @@ export interface TicketType {
 
 // API 返回的 TicketType 转换为本地格式
 const convertFromApi = (apiType: TicketTypeApiModel): TicketType => {
-  const iconMap: Record<string, string> = {
-    '报修': 'Tools',
-    '投诉': 'Warning',
-    '咨询': 'QuestionFilled',
-    '建议': 'Edit',
-    '设施报修': 'Tools',
-    '网络问题': 'Connection',
-    '电气问题': 'Lightning',
-    '给排水': 'Water',
-    '保洁服务': 'Brush',
-    '投诉建议': 'ChatDotRound'
-  }
-  const colorMap: Record<string, string> = {
-    '报修': '#409EFF',
-    '投诉': '#F56C6C',
-    '咨询': '#67C23A',
-    '建议': '#E6A23C',
-    '设施报修': '#409EFF',
-    '网络问题': '#9C27B0',
-    '电气问题': '#FF9800',
-    '给排水': '#2196F3',
-    '保洁服务': '#4CAF50',
-    '投诉建议': '#F44336'
-  }
   return {
     id: apiType.id,
     name: apiType.name,
-    icon: iconMap[apiType.name] || 'Document',
-    color: colorMap[apiType.name] || '#909399',
+    icon: apiType.icon || 'Document',
+    color: apiType.color || '#909399',
     status: apiType.status === 'Active' ? 'Active' : 'Inactive'
   }
 }
@@ -111,38 +87,89 @@ export const getAllTicketTypes = () => ticketTypes.value
 // 获取启用的类型
 export const getActiveTicketTypes = () => ticketTypes.value.filter(t => t.status === 'Active')
 
-// 添加类型
+// 添加类型（调用 API）
 export const addTicketType = async (type: Omit<TicketType, 'id'>): Promise<TicketType> => {
-  const newType: TicketType = { ...type, id: typeIdCounter++ }
-  ticketTypes.value.push(newType)
-  saveToStorage(ticketTypes.value)
-  return newType
-}
-
-// 更新类型
-export const updateTicketType = (id: number, updates: Partial<TicketType>) => {
-  const index = ticketTypes.value.findIndex(t => t.id === id)
-  if (index !== -1) {
-    ticketTypes.value[index] = { ...ticketTypes.value[index], ...updates }
-    saveToStorage(ticketTypes.value)
+  try {
+    const response = await ticketTypeApi.create({
+      name: type.name,
+      icon: type.icon,
+      color: type.color,
+      status: type.status
+    })
+    if (response.success && response.data) {
+      const newType: TicketType = convertFromApi(response.data)
+      ticketTypes.value.push(newType)
+      saveToStorage(ticketTypes.value)
+      return newType
+    } else {
+      throw new Error(response.message || '创建失败')
+    }
+  } catch (error) {
+    console.error('添加工单类型失败:', error)
+    throw error
   }
 }
 
-// 删除类型
-export const deleteTicketType = (id: number) => {
-  const index = ticketTypes.value.findIndex(t => t.id === id)
-  if (index !== -1) {
-    ticketTypes.value.splice(index, 1)
-    saveToStorage(ticketTypes.value)
+// 更新类型（调用 API）
+export const updateTicketType = async (id: number, updates: Partial<TicketType>): Promise<void> => {
+  try {
+    const response = await ticketTypeApi.update(id, {
+      name: updates.name,
+      icon: updates.icon,
+      color: updates.color,
+      status: updates.status
+    })
+    if (response.success) {
+      const index = ticketTypes.value.findIndex(t => t.id === id)
+      if (index !== -1) {
+        ticketTypes.value[index] = { ...ticketTypes.value[index], ...updates }
+        saveToStorage(ticketTypes.value)
+      }
+    } else {
+      throw new Error(response.message || '更新失败')
+    }
+  } catch (error) {
+    console.error('更新工单类型失败:', error)
+    throw error
   }
 }
 
-// 切换状态
-export const toggleTicketTypeStatus = (id: number) => {
+// 删除类型（调用 API）
+export const deleteTicketType = async (id: number): Promise<void> => {
+  try {
+    const response = await ticketTypeApi.delete(id)
+    if (response.success) {
+      const index = ticketTypes.value.findIndex(t => t.id === id)
+      if (index !== -1) {
+        ticketTypes.value.splice(index, 1)
+        saveToStorage(ticketTypes.value)
+      }
+    } else {
+      throw new Error(response.message || '删除失败')
+    }
+  } catch (error) {
+    console.error('删除工单类型失败:', error)
+    throw error
+  }
+}
+
+// 切换状态（调用 API）
+export const toggleTicketTypeStatus = async (id: number): Promise<void> => {
   const type = ticketTypes.value.find(t => t.id === id)
-  if (type) {
-    type.status = type.status === 'Active' ? 'Inactive' : 'Active'
-    saveToStorage(ticketTypes.value)
+  if (!type) return
+  
+  const newStatus = type.status === 'Active' ? 'Inactive' : 'Active'
+  try {
+    const response = await ticketTypeApi.update(id, { status: newStatus })
+    if (response.success) {
+      type.status = newStatus
+      saveToStorage(ticketTypes.value)
+    } else {
+      throw new Error(response.message || '状态更新失败')
+    }
+  } catch (error) {
+    console.error('切换工单类型状态失败:', error)
+    throw error
   }
 }
 

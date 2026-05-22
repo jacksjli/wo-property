@@ -172,11 +172,21 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    const payload = {
+      InspectionTitle: form.value.inspectionTitle,
+      BuildingId: form.value.buildingId,
+      InspectionArea: form.value.inspectionArea,
+      InspectorName: form.value.inspectorName,
+      InspectionDate: form.value.inspectionDate || null,
+      InspectionTime: form.value.inspectionTime || null,
+      NextInspectionDate: form.value.nextInspectionDate || null,
+      Remarks: form.value.remarks || null,
+    }
     if (editingId.value) {
-      await masterApi.put(`/inspection-records/${editingId.value}`, form.value)
+      await masterApi.put(`/inspection-records/${editingId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/inspection-records', form.value)
+      await masterApi.post('/inspection-records', payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

@@ -6,15 +6,20 @@ public enum StockStatus { Normal, Low, OutOfStock, Overstock }
 
 public class Material : BaseEntity
 {
-    public string Code { get; set; } = string.Empty;
+    public string MaterialNo { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public int CategoryId { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public string? Spec { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
-    public int SafetyStock { get; set; }
-    public int MaxStock { get; set; }
-    public int CurrentStock { get; set; }
+    public int Quantity { get; set; }
+    public int MinQuantity { get; set; }
+    public decimal Price { get; set; }
+    public string? Location { get; set; }
+    public string Status { get; set; } = "normal";
+    public string? Supplier { get; set; }
+    public DateTime? PurchaseDate { get; set; }
+    public DateTime? ExpirationDate { get; set; }
+    public string? Remark { get; set; }
 }
 
 public class MaterialCategory : BaseEntity

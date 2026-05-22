@@ -33,6 +33,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '工单管理' }
   },
   {
+    path: '/announcements',
+    name: 'Announcement',
+    component: safeImport('../views/announcement/AnnouncementList.vue'),
+    meta: { title: '公告管理' }
+  },
+  {
     path: '/project',
     name: 'Project',
     component: safeImport('../views/project/ProjectList.vue'),
@@ -51,10 +57,22 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '物料管理' }
   },
   {
+    path: '/material-category',
+    name: 'MaterialCategory',
+    component: safeImport('../views/materialCategory/MaterialCategoryList.vue'),
+    meta: { title: '物料分类' }
+  },
+  {
     path: '/notification',
     name: 'Notification',
     component: safeImport('../views/notification/NotificationList.vue'),
     meta: { title: '通知管理' }
+  },
+  {
+    path: '/message-template',
+    name: 'MessageTemplate',
+    component: safeImport('../views/messageTemplate/MessageTemplateList.vue'),
+    meta: { title: '消息模板' }
   },
   {
     path: '/contract',
@@ -93,6 +111,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '访客管理' }
   },
   {
+    path: '/external-person',
+    name: 'ExternalPerson',
+    component: safeImport('../views/externalPerson/ExternalPersonList.vue'),
+    meta: { title: '外部人员' }
+  },
+  {
     path: '/parking',
     name: 'Parking',
     component: safeImport('../views/parking/ParkingList.vue'),
@@ -109,6 +133,12 @@ const routes: RouteRecordRaw[] = [
     name: 'Statistics',
     component: safeImport('../views/statistics/StatisticsView.vue'),
     meta: { title: '统计分析' }
+  },
+  {
+    path: '/reports',
+    name: 'Reports',
+    component: safeImport('../views/reports/ReportsView.vue'),
+    meta: { title: '报表中心' }
   },
   {
     path: '/user',
@@ -189,6 +219,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '大区省市区' }
   },
   {
+    path: '/master/area-building',
+    name: 'MasterAreaBuilding',
+    component: safeImport('../views/master/AreaBuildingView.vue'),
+    meta: { title: '区域·楼栋·房号' }
+  },
+  {
     path: '/master/departments',
     name: 'MasterDepartments',
     component: safeImport('../views/master/DepartmentList.vue'),
@@ -261,6 +297,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '社区活动' }
   },
   {
+    path: '/community-activities',
+    name: 'CommunityActivities',
+    component: safeImport('../views/community/CommunityList.vue'),
+    meta: { title: '社区活动' }
+  },
+  {
     path: '/delivery',
     name: 'Delivery',
     component: safeImport('../views/delivery/DeliveryList.vue'),
@@ -281,18 +323,18 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, from) => {
   const authStore = useAuthStore()
   
   if (to.path === '/login') {
-    next()
+    return true
   } else if (!authStore.token) {
-    next('/login')
+    return '/login'
   } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     ElMessage.warning('需要管理员权限')
-    next('/')
+    return '/'
   } else {
-    next()
+    return true
   }
 })
 

@@ -35,13 +35,17 @@ public class TenantDbFactory : ITenantDbFactory
         var baseConnStr = _configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Default connection string not configured");
 
+        // X-Project header 传递项目名（如 wo_property），需要映射到实际数据库名（如 project_wo_property）
+        // 项目数据库命名规范：project_{project_code}
+        var databaseName = $"project_{tenantCode}";
+
         var result = System.Text.RegularExpressions.Regex.Replace(
             baseConnStr,
             @"Database\s*=\s*[^;]+",
-            $"Database={tenantCode}",
+            $"Database={databaseName}",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-        _logger.LogDebug("Generated connection string for tenant {TenantCode}", tenantCode);
+        _logger.LogDebug("Generated connection string for tenant {TenantCode} -> database {Database}", tenantCode, databaseName);
         return result;
     }
 }

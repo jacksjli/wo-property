@@ -91,7 +91,8 @@ const menuItems = computed(() => {
         items: [
           { name: '设备管理', key: 'device', path: '/device', icon: 'Monitor' },
           { name: '物料管理', key: 'material', path: '/material', icon: 'Box' },
-          { name: '清洁管理', key: 'cleaning', path: '/cleaning', icon: 'Sunny' },
+          { name: '物料分类', key: 'materialCategory', path: '/material-category', icon: 'Box' },
+          { name: '清洁管理', key: 'cleaning', path: '/cleaning', icon: 'Brush' },
           { name: '项目跟踪', key: 'projectTracking', path: '/project-tracking', icon: 'Document' },
         ]
       },
@@ -101,14 +102,42 @@ const menuItems = computed(() => {
           { name: '快递管理', key: 'express', path: '/express', icon: 'Box' },
           { name: '访客管理', key: 'visitor', path: '/visitor', icon: 'User' },
           { name: '社区管理', key: 'community', path: '/community', icon: 'User' },
+          { name: '社区活动', key: 'communityActivity', path: '/community-activities', icon: 'User' },
+          { name: '配送管理', key: 'delivery', path: '/delivery', icon: 'Van' },
+        ]
+      },
+      {
+        title: '📢 消息中心',
+        items: [
+          { name: '公告管理', key: 'announcement', path: '/announcements', icon: 'Bell' },
+          { name: '消息管理', key: 'notification', path: '/notification', icon: 'Bell' },
+          { name: '消息模板', key: 'messageTemplate', path: '/message-template', icon: 'Document' },
+          { name: '外部人员', key: 'externalPerson', path: '/external-person', icon: 'User' },
+        ]
+      },
+      {
+        title: '📊 数据报表',
+        items: [
+          { name: '统计分析', key: 'statistics', path: '/statistics', icon: 'DataAnalysis' },
+          { name: '设备报表', key: 'deviceReport', path: '/reports?tab=device', icon: 'DataAnalysis' },
+          { name: '工单报表', key: 'ticketReport', path: '/reports?tab=ticket', icon: 'DataAnalysis' },
+          { name: '物料报表', key: 'materialReport', path: '/reports?tab=material', icon: 'DataAnalysis' },
+          { name: '满意度调查', key: 'satisfaction', path: '/reports?tab=satisfaction', icon: 'Star' },
+          { name: '综合报表', key: 'generalReport', path: '/reports?tab=general', icon: 'Document' },
+        ]
+      },
+      {
+        title: '📦 采购库存',
+        items: [
+          { name: '采购订单', key: 'purchaseOrder', path: '/reports?tab=purchase', icon: 'ShoppingCart' },
+          { name: '库存事务', key: 'stockTransaction', path: '/reports?tab=stock', icon: 'Box' },
+          { name: '枚举定义', key: 'enumDefinition', path: '/reports?tab=enum', icon: 'List' },
         ]
       },
       {
         title: '👥 人员/系统',
         items: [
           { name: '人员管理', key: 'personnel', path: '/personnel', icon: 'User' },
-          { name: '消息管理', key: 'notification', path: '/notification', icon: 'Bell' },
-          { name: '统计分析', key: 'statistics', path: '/statistics', icon: 'DataAnalysis' },
         ]
       },
     ]

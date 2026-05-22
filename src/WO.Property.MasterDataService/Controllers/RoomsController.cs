@@ -97,6 +97,7 @@ public class RoomsController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "房间不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var updates = new List<string> { "BuildingId = @buildingId", "Floor = @floor", "Unit = @unit", "RoomNumber = @roomNumber", "RoomType = @roomType", "Area = @area", "Status = @status", "UpdatedAt = @updatedAt" };
         using var cmd = new MySqlCommand($"UPDATE Rooms SET {string.Join(", ", updates)} WHERE Id = @id", _db);

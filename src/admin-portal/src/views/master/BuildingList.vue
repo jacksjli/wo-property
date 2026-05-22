@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Refresh } from '@element-plus/icons-vue'
 import { masterApi } from '@/api/http'
+import { toPinyinCode } from '@/utils/pinyin'
 
 const buildings = ref<any[]>([])
 const areas = ref<any[]>([])
@@ -11,16 +12,23 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const currentId = ref<number | null>(null)
 const submitting = ref(false)
-const filterAreaId = ref<number | null>(null)
+const filterArea = ref<string | null>(null)
 
 const form = ref({
   code: '',
   name: '',
-  areaId: null as number | null,
+  area: null as string | null,
   totalFloors: null as number | null,
   totalUnits: null as number | null,
   description: '',
   status: 'Active',
+})
+
+// 监听名称变化，自动生成编码
+watch(() => form.value.name, (newName) => {
+  if (newName && !isEdit.value) {
+    form.value.code = toPinyinCode(newName)
+  }
 })
 
 onMounted(() => { loadAreas(); loadData() })
@@ -34,7 +42,7 @@ const loadData = async () => {
   loading.value = true
   try {
     const params: any = {}
-    if (filterAreaId.value) params.areaId = filterAreaId.value
+    if (filterArea.value) params.area = filterArea.value
     const res: any = await masterApi.get('/buildings', { params })
     if (res.success) buildings.value = res.data || []
   } catch (e: any) { ElMessage.error(e.message || '加载失败') }
@@ -43,14 +51,22 @@ const loadData = async () => {
 
 const openCreate = () => {
   isEdit.value = false
-  form.value = { code: '', name: '', areaId: null, totalFloors: null, totalUnits: null, description: '', status: 'Active' }
+  form.value = { code: '', name: '', area: null, totalFloors: null, totalUnits: null, description: '', status: 'Active' }
   dialogVisible.value = true
 }
 
 const openEdit = (row: any) => {
   isEdit.value = true
   currentId.value = row.id
-  form.value = { code: row.code, name: row.name, areaId: row.areaId, totalFloors: row.totalFloors, totalUnits: row.totalUnits, description: row.description || '', status: row.status || 'Active' }
+  form.value = { 
+    code: row.code, 
+    name: row.name, 
+    area: row.area || null, 
+    totalFloors: row.totalFloors, 
+    totalUnits: row.totalUnits, 
+    description: row.description || '', 
+    status: row.status || 'Active' 
+  }
   dialogVisible.value = true
 }
 
@@ -58,11 +74,21 @@ const handleSave = async () => {
   if (!form.value.code || !form.value.name) { ElMessage.warning('请填写编码和名称'); return }
   submitting.value = true
   try {
+    const payload = {
+      code: form.value.code,
+      name: form.value.name,
+      area: form.value.area,
+      totalFloors: form.value.totalFloors,
+      totalUnits: form.value.totalUnits,
+      description: form.value.description,
+      status: form.value.status
+    }
+    
     if (isEdit.value && currentId.value) {
-      await masterApi.put(`/buildings/${currentId.value}`, form.value)
+      await masterApi.put(`/buildings/${currentId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/buildings', form.value)
+      await masterApi.post('/buildings', payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -79,12 +105,6 @@ const handleDelete = async (row: any) => {
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '删除失败') }
 }
-
-const getAreaName = (areaId: number | null) => {
-  if (!areaId) return '-'
-  const area = areas.value.find(a => a.id === areaId)
-  return area?.name || '-'
-}
 </script>
 
 <template>
@@ -95,8 +115,8 @@ const getAreaName = (areaId: number | null) => {
     </div>
 
     <div class="filter-bar">
-      <el-select v-model="filterAreaId" placeholder="所属区域" clearable style="width:160px" @change="loadData">
-        <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.id" />
+      <el-select v-model="filterArea" placeholder="所属区域" clearable style="width:160px" @change="loadData">
+        <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.name" />
       </el-select>
       <el-button :icon="Refresh" @click="loadData">刷新</el-button>
     </div>
@@ -105,8 +125,8 @@ const getAreaName = (areaId: number | null) => {
       <el-table :data="buildings" v-loading="loading" stripe>
         <el-table-column prop="code" label="编码" width="100" />
         <el-table-column prop="name" label="楼栋名称" />
-        <el-table-column label="所属区域" width="120">
-          <template #default="{ row }">{{ getAreaName(row.areaId) }}</template>
+        <el-table-column prop="area" label="所属区域" width="120">
+          <template #default="{ row }">{{ row.area || '-' }}</template>
         </el-table-column>
         <el-table-column prop="totalFloors" label="层数" width="80" align="center" />
         <el-table-column prop="totalUnits" label="单元数" width="80" align="center" />
@@ -126,11 +146,15 @@ const getAreaName = (areaId: number | null) => {
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑楼栋' : '新增楼栋'" width="500px" destroy-on-close>
       <el-form :model="form" label-width="90px">
-        <el-form-item label="编码" required><el-input v-model="form.code" placeholder="如：BLD-01" /></el-form-item>
-        <el-form-item label="名称" required><el-input v-model="form.name" placeholder="如：1号楼" /></el-form-item>
+        <el-form-item label="名称" required>
+          <el-input v-model="form.name" placeholder="如：1号楼" @input="!isEdit && (form.code = toPinyinCode(form.name))" />
+        </el-form-item>
+        <el-form-item label="编码" required>
+          <el-input v-model="form.code" placeholder="自动生成或手动输入" />
+        </el-form-item>
         <el-form-item label="所属区域">
-          <el-select v-model="form.areaId" placeholder="选择区域" clearable style="width:100%">
-            <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.id" />
+          <el-select v-model="form.area" placeholder="选择区域" clearable style="width:100%">
+            <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.name" />
           </el-select>
         </el-form-item>
         <el-form-item label="总层数"><el-input-number v-model="form.totalFloors" :min="1" /></el-form-item>

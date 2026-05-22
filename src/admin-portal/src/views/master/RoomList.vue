@@ -15,14 +15,12 @@ const filterBuildingId = ref<number | null>(null)
 
 const form = ref({
   buildingId: null as number | null,
-  code: '',
-  name: '',
-  floor: null as number | null,
+  roomNumber: '',   // 数据库: RoomNumber
+  roomType: '',     // 数据库: RoomType
+  floor: '',
   unit: '',
-  ownerName: '',
-  ownerPhone: '',
-  remark: '',
-  isActive: true,
+  area: null as number | null,
+  status: 'Active', // 数据库: Status ('Active' / 'Inactive')
 })
 
 onMounted(() => { loadBuildings(); loadData() })
@@ -47,29 +45,48 @@ watch(filterBuildingId, () => { loadData() })
 
 const openCreate = () => {
   isEdit.value = false
-  form.value = { buildingId: filterBuildingId.value, code: '', name: '', floor: null, unit: '', ownerName: '', ownerPhone: '', remark: '', isActive: true }
+  form.value = { buildingId: filterBuildingId.value, roomNumber: '', roomType: '', floor: '', unit: '', area: null, status: 'Active' }
   dialogVisible.value = true
 }
 
 const openEdit = (row: any) => {
   isEdit.value = true
   currentId.value = row.id
-  form.value = { buildingId: row.buildingId, code: row.code, name: row.name, floor: row.floor, unit: row.unit || '', ownerName: row.ownerName || '', ownerPhone: row.ownerPhone || '', remark: row.remark || '', isActive: row.isActive }
+  form.value = { 
+    buildingId: row.buildingId, 
+    roomNumber: row.roomNumber || '',   // 数据库: RoomNumber
+    roomType: row.roomType || '',       // 数据库: RoomType
+    floor: row.floor || '', 
+    unit: row.unit || '', 
+    area: row.area, 
+    status: row.status || 'Active'      // 数据库: Status
+  }
   dialogVisible.value = true
 }
 
 const handleSave = async () => {
-  if (!form.value.buildingId || !form.value.code || !form.value.name) {
-    ElMessage.warning('请填写楼栋、编码和名称')
+  if (!form.value.buildingId || !form.value.roomNumber) {
+    ElMessage.warning('请选择楼栋并填写房号')
     return
   }
   submitting.value = true
   try {
+    // 构建符合数据库字段的 payload
+    const payload = {
+      buildingId: form.value.buildingId,
+      roomNumber: form.value.roomNumber,
+      roomType: form.value.roomType,
+      floor: form.value.floor,
+      unit: form.value.unit,
+      area: form.value.area,
+      status: form.value.status
+    }
+    
     if (isEdit.value && currentId.value) {
-      await masterApi.put(`/rooms/${currentId.value}`, form.value)
+      await masterApi.put(`/rooms/${currentId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/rooms', form.value)
+      await masterApi.post('/rooms', payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -80,7 +97,7 @@ const handleSave = async () => {
 
 const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除房号「${row.name}」吗？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除房号「${row.roomNumber}」吗？`, '提示', { type: 'warning' })
     await masterApi.delete(`/rooms/${row.id}`)
     ElMessage.success('删除成功')
     loadData()
@@ -90,6 +107,14 @@ const handleDelete = async (row: any) => {
 const getBuildingName = (id: number) => {
   const b = buildings.value.find(b => b.id === id)
   return b?.name || '-'
+}
+
+const getStatusType = (status: string) => {
+  return status === 'Active' ? 'success' : 'info'
+}
+
+const getStatusText = (status: string) => {
+  return status === 'Active' ? '启用' : '停用'
 }
 </script>
 
@@ -109,18 +134,17 @@ const getBuildingName = (id: number) => {
 
     <el-card shadow="never">
       <el-table :data="rooms" v-loading="loading" stripe>
-        <el-table-column prop="code" label="房号编码" width="100" />
-        <el-table-column prop="name" label="显示名称" />
+        <el-table-column prop="roomNumber" label="房号" width="100" />
+        <el-table-column prop="roomType" label="类型" />
         <el-table-column label="所属楼栋" width="120">
           <template #default="{ row }">{{ getBuildingName(row.buildingId) }}</template>
         </el-table-column>
         <el-table-column prop="floor" label="楼层" width="80" align="center" />
         <el-table-column prop="unit" label="单元" width="80" align="center" />
-        <el-table-column prop="ownerName" label="业主姓名" width="100" />
-        <el-table-column prop="ownerPhone" label="业主电话" width="130" />
-        <el-table-column prop="isActive" label="状态" width="80" align="center">
+        <el-table-column prop="area" label="面积(㎡)" width="100" align="center" />
+        <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.isActive ? 'success' : 'info'" size="small">{{ row.isActive ? '启用' : '停用' }}</el-tag>
+            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" align="center">
@@ -132,21 +156,24 @@ const getBuildingName = (id: number) => {
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑房号' : '新增房号'" width="550px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑房号' : '新增房号'" width="500px" destroy-on-close>
       <el-form :model="form" label-width="90px">
         <el-form-item label="所属楼栋" required>
           <el-select v-model="form.buildingId" placeholder="选择楼栋" style="width:100%">
             <el-option v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="编码" required><el-input v-model="form.code" placeholder="如：101" /></el-form-item>
-        <el-form-item label="显示名称" required><el-input v-model="form.name" placeholder="如：101室" /></el-form-item>
-        <el-form-item label="楼层"><el-input-number v-model="form.floor" :min="1" /></el-form-item>
-        <el-form-item label="单元"><el-input v-model="form.unit" placeholder="如：1单元" /></el-form-item>
-        <el-form-item label="业主姓名"><el-input v-model="form.ownerName" /></el-form-item>
-        <el-form-item label="业主电话"><el-input v-model="form.ownerPhone" /></el-form-item>
-        <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="状态"><el-switch v-model="form.isActive" active-text="启用" inactive-text="停用" /></el-form-item>
+        <el-form-item label="房号" required><el-input v-model="form.roomNumber" placeholder="如：101" /></el-form-item>
+        <el-form-item label="类型"><el-input v-model="form.roomType" placeholder="如：住宅、商铺" /></el-form-item>
+        <el-form-item label="楼层"><el-input v-model="form.floor" placeholder="如：1" /></el-form-item>
+        <el-form-item label="单元"><el-input v-model="form.unit" placeholder="如：1" /></el-form-item>
+        <el-form-item label="面积(㎡)"><el-input-number v-model="form.area" :min="0" :precision="2" /></el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="form.status" style="width:100%">
+            <el-option label="启用" value="Active" />
+            <el-option label="停用" value="Inactive" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>

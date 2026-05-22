@@ -91,6 +91,7 @@ public class RegionsController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "区域配置不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Config = @config", "Status = @status", "UpdatedAt = @updatedAt" };
         using var cmd = new MySqlCommand($"UPDATE Regions SET {string.Join(", ", updates)} WHERE Id = @id", _db);

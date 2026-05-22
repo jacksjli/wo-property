@@ -2,6 +2,67 @@ import { ref } from 'vue'
 import { masterDataApi, type FieldDefinition } from '../api/masterDataService'
 
 // ============================================================
+// 分级刷新配置（按业务变更频率分层）
+// ============================================================
+/** 刷新间隔配置（毫秒） */
+const REFRESH_INTERVALS = {
+  HIGH: 1 * 60 * 1000,       // 🔴 高频：1 分钟（fieldDefinition, ticket, ticketType, dispatch）
+  MEDIUM: 3 * 60 * 1000,     // 🟡 中频：3 分钟（personnel, contract, material, payment, device, jobType）
+  LOW: 5 * 60 * 1000,       // 🟢 低频：5 分钟（building, room, area, department, supplier, resident）
+  STATIC: 10 * 60 * 1000,    // 🔵 静态：10 分钟（statistics, projectTracking, project）
+}
+
+/** 模块分级配置 */
+const MODULE_REFRESH_TIER: Record<string, 'HIGH' | 'MEDIUM' | 'LOW' | 'STATIC'> = {
+  // 🔴 高频：字段配置、工单相关
+  fieldDefinition: 'HIGH',
+  ticket: 'HIGH',
+  ticketType: 'HIGH',
+  dispatch: 'HIGH',
+  
+  // 🟡 中频：人员、合同、物料、设备
+  personnel: 'MEDIUM',
+  contract: 'MEDIUM',
+  material: 'MEDIUM',
+  payment: 'MEDIUM',
+  device: 'MEDIUM',
+  jobType: 'MEDIUM',
+  cleaning: 'MEDIUM',
+  community: 'MEDIUM',
+  notification: 'MEDIUM',
+  
+  // 🟢 低频：建筑、房间、部门、供应商
+  building: 'LOW',
+  room: 'LOW',
+  area: 'LOW',
+  department: 'LOW',
+  supplier: 'LOW',
+  resident: 'LOW',
+  parking: 'LOW',
+  key: 'LOW',
+  visitor: 'LOW',
+  inspection: 'LOW',
+  express: 'LOW',
+  delivery: 'LOW',
+  renovation: 'LOW',
+  accessControl: 'LOW',
+  takeout: 'LOW',
+  complaint: 'LOW',
+  
+  // 🔵 静态：统计、项目
+  statistics: 'STATIC',
+  projectTracking: 'STATIC',
+  project: 'STATIC',
+  finance: 'STATIC',
+  common: 'STATIC',
+  timeout: 'STATIC',
+  region: 'STATIC',
+  deviceType: 'STATIC',
+  field: 'STATIC',
+  project_config: 'STATIC',
+}
+
+// ============================================================
 // 本地类型定义（与后端 FieldDefinition 对齐，并保留前端扩展字段）
 // ============================================================
 
@@ -254,10 +315,12 @@ const SHARED_FIELDS = {
 // key = module.fieldKey，value = 共享字段的 key
 const ALIAS_MAP: Record<string, string> = {
   // 工单模块
+  'ticket.ticketCode': 'ticketCode',
   'ticket.creatorName': 'name',
   'ticket.assigneeName': 'name',
   'ticket.contactName': 'name',
   'ticket.contactPhone': 'phone',
+  'ticket.category': 'category',
 
   // 设备模块
   'device.responsible': 'name',
@@ -325,16 +388,16 @@ function resolveSharedField(
 
 // 工单模块的默认字段配置
 const TICKET_DEFAULT_FIELDS: FieldConfig[] = [
-  { id: 1, module: 'ticket', name: '工单编号', key: 'ticketNo', type: 'text', defaultValue: '', required: true, status: 'Active', width: 130, classification: 'private', source: 'TicketService' },
+  { id: 1, module: 'ticket', name: '工单编号', key: 'ticketCode', type: 'text', defaultValue: '', required: true, status: 'Active', width: 130, classification: 'private', source: 'TicketService' },
   { id: 2, module: 'ticket', name: '工单标题', key: 'title', type: 'text', defaultValue: '', required: true, status: 'Active', width: 200, classification: 'private', source: 'TicketService' },
   { id: 6, module: 'ticket', name: '工单描述', key: 'description', type: 'textarea', defaultValue: '', required: false, status: 'Active', classification: 'private', source: 'TicketService' },
   { id: 10, module: 'ticket', name: '处理时间', key: 'handleTime', type: 'date', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'private', source: 'TicketService' },
   { id: 11, module: 'ticket', name: '完成时间', key: 'completeTime', type: 'date', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'private', source: 'TicketService' },
-  { id: 3, module: 'ticket', name: '工单类型', key: 'type', type: 'select', defaultValue: 'Repair', required: true, status: 'Active', width: 100, options: ['Repair', 'Access', 'Cleaning', 'Security', 'Other'], classification: 'shared', source: 'MasterDataService', aliasOf: 'type' },
+  { id: 3, module: 'ticket', name: '工单类型', key: 'category', type: 'select', defaultValue: 'Repair', required: true, status: 'Active', width: 100, options: ['Repair', 'Access', 'Cleaning', 'Security', 'Other'], classification: 'shared', source: 'MasterDataService', aliasOf: 'type' },
   { id: 4, module: 'ticket', name: '优先级', key: 'priority', type: 'select', defaultValue: 'Normal', required: true, status: 'Active', width: 80, options: ['High', 'Normal', 'Low'], classification: 'shared', source: 'MasterDataService', aliasOf: 'priority' },
-  { id: 5, module: 'ticket', name: '工单状态', key: 'status', type: 'select', defaultValue: 'Open', required: true, status: 'Active', width: 100, options: ['Open', 'Processing', 'Resolved', 'Closed'], classification: 'system', source: 'System', aliasOf: 'status' },
+  { id: 5, module: 'ticket', name: '工单状态', key: 'status', type: 'select', defaultValue: 'Open', required: true, status: 'Active', width: 100, options: ['New', 'Open', 'Dispatched', 'Processing', 'Escalated', 'Finished', 'Resolved', 'Closed'], classification: 'system', source: 'System', aliasOf: 'status' },
   { id: 7, module: 'ticket', name: '创建人', key: 'creatorName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
-  { id: 8, module: 'ticket', name: '创建时间', key: 'createTime', type: 'date', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'system', source: 'System', aliasOf: 'createdAt' },
+  { id: 8, module: 'ticket', name: '创建时间', key: 'createdAt', type: 'date', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'system', source: 'System', aliasOf: 'createdAt' },
   { id: 9, module: 'ticket', name: '指派人', key: 'assigneeName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
   { id: 12, module: 'ticket', name: '联系人', key: 'contactName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
   { id: 13, module: 'ticket', name: '联系电话', key: 'contactPhone', type: 'text', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'shared', source: 'PersonService', aliasOf: 'phone' },
@@ -344,19 +407,16 @@ const TICKET_DEFAULT_FIELDS: FieldConfig[] = [
 
 // 设备管理模块的默认字段配置
 const DEVICE_DEFAULT_FIELDS: FieldConfig[] = [
-  { id: 1, module: 'device', name: '设备编号', key: 'deviceNo', type: 'text', defaultValue: '', required: true, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
-  { id: 2, module: 'device', name: '设备名称', key: 'deviceName', type: 'text', defaultValue: '', required: true, status: 'Active', width: 150, classification: 'private', source: 'DeviceService' },
-  { id: 3, module: 'device', name: '设备类型', key: 'deviceType', type: 'select', defaultValue: '其他', required: true, status: 'Active', width: 100, options: ['电梯', '消防', '监控', '门禁', '空调', '照明', '给排水', '供电', '其他'], classification: 'shared', source: 'MasterDataService', aliasOf: 'category' },
-  { id: 4, module: 'device', name: '设备型号', key: 'model', type: 'text', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
-  { id: 5, module: 'device', name: '设备品牌', key: 'brand', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'private', source: 'DeviceService' },
-  { id: 6, module: 'device', name: '安装位置', key: 'location', type: 'text', defaultValue: '', required: true, status: 'Active', width: 150, classification: 'shared', source: 'MasterDataService', aliasOf: 'location' },
-  { id: 7, module: 'device', name: '设备状态', key: 'status', type: 'select', defaultValue: '正常', required: true, status: 'Active', width: 100, options: ['正常', '维修中', '已报废', '待报废'], classification: 'system', source: 'System', aliasOf: 'status' },
-  { id: 8, module: 'device', name: '巡检周期', key: 'inspectionCycle', type: 'select', defaultValue: '月检', required: true, status: 'Active', width: 100, options: ['日检', '周检', '月检', '季检', '年检'], classification: 'shared', source: 'MasterDataService', aliasOf: 'cycle' },
-  { id: 9, module: 'device', name: '购买日期', key: 'purchaseDate', type: 'date', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
-  { id: 10, module: 'device', name: '维保截止', key: 'warrantyEndDate', type: 'date', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
-  { id: 11, module: 'device', name: '供应商', key: 'supplier', type: 'text', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
-  { id: 12, module: 'device', name: '负责人', key: 'responsible', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
-  { id: 13, module: 'device', name: '备注', key: 'remark', type: 'textarea', defaultValue: '', required: false, status: 'Active', classification: 'system', source: 'System', aliasOf: 'remark' },
+  // 设备字段定义（与后端 DeviceService API 一致）
+  { id: 1, module: 'device', name: '设备编号', key: 'code', type: 'text', defaultValue: '', required: true, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
+  { id: 2, module: 'device', name: '设备名称', key: 'name', type: 'text', defaultValue: '', required: true, status: 'Active', width: 150, classification: 'private', source: 'DeviceService' },
+  { id: 3, module: 'device', name: '设备类型', key: 'deviceTypeId', type: 'select', defaultValue: '', required: false, status: 'Active', width: 100, options: ['1', '2', '3', '4', '5'], classification: 'shared', source: 'MasterDataService' },
+  { id: 4, module: 'device', name: '所属楼栋', key: 'buildingId', type: 'number', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'MasterDataService' },
+  { id: 5, module: 'device', name: '楼层', key: 'floor', type: 'number', defaultValue: '', required: false, status: 'Active', width: 80, classification: 'private', source: 'DeviceService' },
+  { id: 6, module: 'device', name: '安装位置', key: 'location', type: 'text', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'shared', source: 'MasterDataService' },
+  { id: 7, module: 'device', name: '购买日期', key: 'purchaseDate', type: 'date', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'private', source: 'DeviceService' },
+  { id: 8, module: 'device', name: '设备状态', key: 'status', type: 'select', defaultValue: 'Active', required: true, status: 'Active', width: 100, options: ['Active', 'Maintenance', 'Inactive', 'Scrapped'], classification: 'system', source: 'System' },
+  { id: 9, module: 'device', name: '备注', key: 'remarks', type: 'textarea', defaultValue: '', required: false, status: 'Active', classification: 'system', source: 'System' },
 ]
 
 // 物料管理模块的默认字段配置
@@ -745,15 +805,18 @@ const forceResetConfig = (): Record<string, FieldConfig[]> => {
 
 /** 将后端 FieldDefinition 转换为前端 FieldConfig */
 function convertApiToFieldConfig(def: FieldDefinition, module: string): FieldConfig {
-  // 尝试从 ALIAS_MAP 获取 aliasOf
-  const aliasKey = `${module}.${def.fieldKey}`
+  // 优先从等价映射获取 canonical key（API 返回的字段名可能是等价名）
+  const canonicalKey = resolveToCanonical(def.fieldKey)
+  
+  // 尝试从 ALIAS_MAP 获取 aliasOf（仅用于共享字段别名映射）
+  const aliasKey = `${module}.${canonicalKey}`
   const aliasOf = ALIAS_MAP[aliasKey] ?? undefined
 
   return {
     id: def.id,
     module,
     name: def.displayName,
-    key: def.fieldKey,
+    key: canonicalKey,  // 使用标准化的 canonical key
     type: def.fieldType,
     defaultValue: def.defaultValue,
     required: def.isRequired,
@@ -769,6 +832,39 @@ function convertApiToFieldConfig(def: FieldDefinition, module: string): FieldCon
 }
 
 /** 从 API 加载模块字段（静默后台刷新） */
+/** 从 API 加载等价映射缓存 */
+async function loadEquivalenceCache(): Promise<void> {
+  try {
+    const response = await masterDataApi.resolveFields([])
+    // 先获取所有等价映射，再调用 resolve 获取完整映射
+    const equivResponse = await masterDataApi.getFieldEquivalences()
+    const equivalences = equivResponse.data
+    
+    // 为每个等价字段建立映射
+    const resolved: Record<string, string> = {}
+    equivalences.forEach((eq: any) => {
+      resolved[eq.equivalentField] = eq.canonicalField
+    })
+    
+    // 再调用 resolve API 获取完整的双向映射
+    const fieldsToResolve = equivalences.map((eq: any) => eq.equivalentField)
+    if (fieldsToResolve.length > 0) {
+      const resolveResponse = await masterDataApi.resolveFields(fieldsToResolve)
+      Object.assign(resolved, resolveResponse.data)
+    }
+    
+    equivalenceCache = resolved
+    console.log(`✅ 等价映射加载成功 (${Object.keys(resolved).length} 个字段)`)
+  } catch (error) {
+    console.warn('[fieldConfig] 等价映射加载失败:', error)
+  }
+}
+
+/** 将字段名解析为标准名 */
+function resolveToCanonical(fieldKey: string): string {
+  return equivalenceCache[fieldKey] ?? fieldKey
+}
+
 async function loadFieldsFromAPI(module: string): Promise<FieldConfig[]> {
   try {
     const response = await masterDataApi.getFieldsByModule(module)
@@ -803,6 +899,10 @@ async function initializeConfigs(): Promise<Record<string, FieldConfig[]>> {
     console.warn('[fieldConfig] API 初始化失败，回退到 localStorage:', error)
   }
 
+  // 加载等价映射缓存
+  loadEquivalenceCache().catch(e => console.warn('[fieldConfig] 等价映射加载失败:', e))
+
+
   // 回退到 localStorage
   return forceResetConfig()
 }
@@ -820,6 +920,9 @@ let apiCache: Record<string, FieldConfig[]> = {}
 // 是否已初始化完成
 let initialized = false
 
+
+// 等价映射缓存（字段名 → 标准名）
+let equivalenceCache: Record<string, string> = {}
 /** 尝试从 API 静默刷新所有模块的字段配置（每 5 分钟调用一次） */
 async function refreshFromAPI() {
   try {
@@ -852,6 +955,34 @@ async function refreshFromAPI() {
   }
 }
 
+/** 按 tier 刷新指定模块 */
+async function refreshTierModules(tier: 'HIGH' | 'MEDIUM' | 'LOW' | 'STATIC') {
+  try {
+    const modules = Object.keys(MODULE_REFRESH_TIER).filter(m => MODULE_REFRESH_TIER[m] === tier)
+    if (modules.length === 0) return
+    
+    const results = await Promise.allSettled(modules.map(m => loadFieldsFromAPI(m)))
+    let updated = 0
+    
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled' && (r.value as FieldConfig[]).length > 0) {
+        const module = modules[i]
+        const localFields = fieldConfigs.value[module]
+        if (!localFields || localFields.length === 0) {
+          fieldConfigs.value[module] = r.value as FieldConfig[]
+          updated++
+        }
+      }
+    })
+    
+    if (updated > 0) {
+      console.log(`[fieldConfig] ${tier} tier 刷新完成 (更新 ${updated} 个模块)`)
+    }
+  } catch (error) {
+    console.warn(`[fieldConfig] ${tier} tier 刷新失败:`, error)
+  }
+}
+
 // 启动时异步初始化（不阻塞 UI）
 initializeConfigs().then(configs => {
   // 如果 API 返回了有效数据，合并进去
@@ -865,8 +996,13 @@ initializeConfigs().then(configs => {
   }
   initialized = true
 
-  // 启动后台定时刷新（每 5 分钟）
-  setInterval(refreshFromAPI, 5 * 60 * 1000)
+  // 启动分级后台定时刷新
+  setInterval(() => refreshTierModules('HIGH'), REFRESH_INTERVALS.HIGH)
+  setInterval(() => refreshTierModules('MEDIUM'), REFRESH_INTERVALS.MEDIUM)
+  setInterval(() => refreshTierModules('LOW'), REFRESH_INTERVALS.LOW)
+  setInterval(() => refreshTierModules('STATIC'), REFRESH_INTERVALS.STATIC)
+  
+  console.log('[fieldConfig] 分级刷新已启动: HIGH=1分钟, MEDIUM=3分钟, LOW=5分钟, STATIC=10分钟')
 })
 
 // ============================================================
@@ -1010,4 +1146,4 @@ export const sourceServiceOptions = [
   { value: 'ProjectTrackingService', label: '项目跟踪服务' },
 ]
 
-export { fieldConfigs, SHARED_FIELDS, ALIAS_MAP }
+export { fieldConfigs, SHARED_FIELDS, ALIAS_MAP, equivalenceCache, resolveToCanonical }

@@ -1,12 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Microsoft.IdentityModel.Tokens;
 
 namespace WO.Property.NotificationService.Middleware;
 
 /// <summary>
 /// 租户路由中间件
-/// 从 JWT 提取 tenant_code → 注入 TenantDbFactory
+/// 优先级：X-Project header > JWT project_code
 /// </summary>
 public class TenantRoutingMiddleware
 {
@@ -23,43 +22,43 @@ public class TenantRoutingMiddleware
     {
         var path = context.Request.Path.Value?.ToLower() ?? "";
 
-        // 跳过匿名接口
         if (IsAnonymousEndpoint(path))
         {
             await _next(context);
             return;
         }
 
-        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        string? tenantCode = null;
+
+        // 优先使用 X-Project header
+        var xProjectHeader = context.Request.Headers["X-Project"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(xProjectHeader))
         {
-            await _next(context);
-            return;
+            tenantCode = xProjectHeader;
+            _logger.LogDebug("Tenant from X-Project header: {TenantCode}", tenantCode);
         }
 
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        
-        // 直接解析 JWT payload (bypass claims mapping which strips non-standard claims)
-        var tenantCode = ExtractTenantCodeFromJwt(token);
-
+        // 备选：从 JWT 提取
         if (string.IsNullOrEmpty(tenantCode))
         {
-            _logger.LogWarning("JWT does not contain tenant_code claim");
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new
+            var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
             {
-                success = false,
-                message = "Invalid token: missing tenant information"
-            });
-            return;
+                var token = authHeader.Substring("Bearer ".Length).Trim();
+                tenantCode = ExtractTenantCodeFromJwt(token);
+            }
         }
 
-        _logger.LogWarning("[INSPECTION MW] extracted tenantCode: {TC}, setting...", tenantCode ?? "NULL");
+        // 默认租户
+        if (string.IsNullOrEmpty(tenantCode))
+        {
+            tenantCode = "wo_property";
+        }
+
         tenantDbFactory.SetCurrentTenantCode(tenantCode);
 
         try
         {
-            _logger.LogWarning("[INSPECTION MW] after SetCurrent, GetCurrent: {TC}", tenantDbFactory.GetCurrentTenantCode() ?? "NULL");
             await _next(context);
         }
         finally
@@ -72,28 +71,24 @@ public class TenantRoutingMiddleware
     {
         try
         {
-            // JWT payload is the second segment (index 1)
             var parts = token.Split('.');
             if (parts.Length < 2)
                 return null;
 
-            // Convert Base64URL to Base64
             var payload = parts[1]
                 .Replace('-', '+')
                 .Replace('_', '/');
 
-            // Add padding if needed
             var pad = payload.Length % 4;
             if (pad > 0) payload += new string('=', 4 - pad);
 
             var payloadBytes = Convert.FromBase64String(payload);
             var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
-            
-            // Parse JSON to find tenant_code
+
             using var doc = System.Text.Json.JsonDocument.Parse(payloadJson);
-            if (doc.RootElement.TryGetProperty("tenant_code", out var tcProp))
-                return tcProp.GetString();
-            
+            if (doc.RootElement.TryGetProperty("project_code", out var pcProp))
+                return pcProp.GetString();
+
             return null;
         }
         catch (Exception ex)

@@ -5,7 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting } from '@element-plus/icons-vue'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { materialApi } from '@/api/http'
 import { useFieldConfig } from '@/composables/useFieldConfig'
 
 const { verifyAdminPassword } = usePermission()
@@ -107,7 +107,7 @@ const loadData = async () => {
     if (filterKeyword.value) params.keyword = filterKeyword.value
     if (filterCategory.value) params.category = filterCategory.value
     if (filterStatus.value) params.status = filterStatus.value
-    const res: any = await masterApi.get('/materials', { params })
+    const res: any = await materialApi.get('/materials', { params })
     recordList.value = res.data || []
     total.value = res.total || 0
   } catch (e: any) {
@@ -170,11 +170,27 @@ const handleSubmit = async () => {
   if (!form.value.name.trim()) { ElMessage.warning('请输入物料名称'); return }
 
   try {
+    // 构建 PascalCase payload（与后端 MaterialService API 一致）
+    const payload: any = {
+      MaterialNo: form.value.materialNo,
+      Name: form.value.name,
+      Category: form.value.category || '',
+      Spec: form.value.spec || '',
+      Unit: form.value.unit || '',
+      Quantity: form.value.quantity || 0,
+      MinQuantity: form.value.minQuantity || 0,
+      Price: form.value.price || 0,
+      Location: form.value.location || '',
+      Status: form.value.status || 'normal',
+      Supplier: form.value.supplier || '',
+      Remark: form.value.remark || '',
+    }
+
     if (editingId.value) {
-      await masterApi.put(`/materials/${editingId.value}`, form.value)
+      await materialApi.put(`/materials/${editingId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/materials', form.value)
+      await materialApi.post('/materials', payload)
       ElMessage.success('添加成功')
     }
     await loadData()
@@ -187,7 +203,7 @@ const handleSubmit = async () => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除物料 "${row.Name}" 吗？`, '提示', { type: 'warning' })
-    await masterApi.delete(`/materials/${row.Id}`)
+    await materialApi.delete(`/materials/${row.Id}`)
     ElMessage.success('删除成功')
     await loadData()
   } catch (e: any) {

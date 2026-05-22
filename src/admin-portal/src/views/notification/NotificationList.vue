@@ -1,452 +1,289 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Refresh, Setting, Bell, Top, Close, View } from '@element-plus/icons-vue'
-import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
-import { usePermission } from '@/composables/usePermission'
-import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
-import {
-  getAllNotifications,
-  getNotificationStats,
-  addNotification,
-  updateNotification,
-  deleteNotification,
-  publishNotification,
-  cancelNotification,
-  togglePinNotification,
-  getLevelColor,
-  getStatusType,
-  notificationTypeLabels,
-  notificationLevelLabels,
-  notificationStatusLabels,
-  sendMethodLabels,
-  type Notification,
-  type NotificationType,
-  type NotificationLevel,
-  type NotificationStatus
-} from '@/stores/notification'
+import { Plus, Edit, Delete, Refresh, Bell, Top, Close, View } from '@element-plus/icons-vue'
+import { notificationApi } from '@/api/notification'
 
-// 权限验证
-const { verifyAdminPassword } = usePermission()
-const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
-
-// 获取启用的字段
-const getNotificationFields = () => getActiveFields('notification')
-
-// 打开字段配置（需要管理员验证）
-const openFieldConfig = async () => {
-  const verified = await verifyAdminPassword()
-  if (verified) {
-    fieldDialogRef.value?.open()
-  }
+// 通知类型/级别/状态标签
+const typeLabels: Record<string, string> = {
+  system: '系统通知',
+  notice: '温馨提示',
+  alert: '预警通知',
+  reminder: '提醒通知',
+  announcement: '公告',
+  Ticket: '工单通知',
+  Announcement: '系统公告'
 }
 
-// 刷新字段
-const refreshKey = ref(0)
-const refreshFields = () => {
-  refreshKey.value++
+const priorityLabels: Record<string, string> = {
+  Normal: '普通',
+  High: '重要',
+  Urgent: '紧急'
+}
+
+const statusLabels: Record<string, string> = {
+  published: '已发布',
+  draft: '草稿',
+  cancelled: '已撤回'
 }
 
 // 数据
-const notifications = ref<Notification[]>(getAllNotifications())
-const stats = computed(() => getNotificationStats())
+const notifications = ref<any[]>([])
+const loading = ref(false)
 
 // 筛选
-const filterStatus = ref<NotificationStatus | ''>('')
-const filterType = ref<NotificationType | ''>('')
+const filterType = ref('')
+const filterPriority = ref('')
 
 // 筛选后的通知
 const filteredNotifications = computed(() => {
   let result = notifications.value
-  
-  if (filterStatus.value) {
-    result = result.filter(n => n.status === filterStatus.value)
-  }
-  
-  if (filterType.value) {
-    result = result.filter(n => n.type === filterType.value)
-  }
-  
-  // 置顶优先，然后按发布时间倒序
-  return result.sort((a, b) => {
-    if (a.isPinned !== b.isPinned) return b.isPinned ? 1 : -1
-    return (b.publishTime || b.createdAt).localeCompare(a.publishTime || a.createdAt)
-  })
+  if (filterType.value) result = result.filter(n => n.type === filterType.value)
+  if (filterPriority.value) result = result.filter(n => n.priority === filterPriority.value)
+  return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 })
 
-// 对话框状态
+// 统计
+const stats = computed(() => ({
+  total: notifications.value.length,
+  unread: notifications.value.filter(n => !n.isRead).length,
+  today: notifications.value.filter(n => {
+    const today = new Date().toISOString().split('T')[0]
+    return n.createdAt?.startsWith(today)
+  }).length
+}))
+
+// 对话框
 const dialogVisible = ref(false)
-const detailDialogVisible = ref(false)
-const dialogTitle = ref('新增通知')
+const dialogTitle = ref('发送通知')
 const editingId = ref<number | null>(null)
-const viewingNotification = ref<Notification | null>(null)
 
-// 表单数据
 const form = ref({
-  notificationNo: '',
+  userId: 0 as number | null,
   title: '',
-  type: 'notice' as NotificationType,
-  level: 'info' as NotificationLevel,
   content: '',
-  sendMethod: 'app' as string,
-  sendScope: 'all' as string,
-  targetBuildings: [] as string[],
-  publisher: '',
-  startTime: '',
-  endTime: '',
-  status: 'draft' as NotificationStatus,
-  isPinned: false,
-  remark: ''
+  type: 'system',
+  priority: 'Normal'
 })
 
-// 选项
-const typeOptions = Object.entries(notificationTypeLabels).map(([value, label]) => ({ value, label }))
-const levelOptions = Object.entries(notificationLevelLabels).map(([value, label]) => ({ value, label }))
-const statusOptions = Object.entries(notificationStatusLabels).map(([value, label]) => ({ value, label }))
-const methodOptions = Object.entries(sendMethodLabels).map(([value, label]) => ({ value, label }))
+const typeOptions = Object.entries(typeLabels).map(([v, l]) => ({ value: v, label: l }))
+const priorityOptions = Object.entries(priorityLabels).map(([v, l]) => ({ value: v, label: l }))
 
-// 打开新增对话框
-const handleAdd = () => {
-  dialogTitle.value = '新增通知'
-  editingId.value = null
-  const now = new Date().toISOString()
-  const today = now.split('T')[0]
-  form.value = {
-    notificationNo: 'NOT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-4),
-    title: '',
-    type: 'notice',
-    level: 'info',
-    content: '',
-    sendMethod: 'app',
-    sendScope: 'all',
-    targetBuildings: [],
-    publisher: '物业管理员',
-    startTime: today,
-    endTime: '',
-    status: 'draft',
-    isPinned: false,
-    remark: ''
+// 加载数据
+const loadData = async () => {
+  loading.value = true
+  try {
+    const res: any = await notificationApi.get('/api/tenant/notification/notifications', {
+      params: { page: 1, pageSize: 200 }
+    })
+    if (res.success) {
+      notifications.value = res.data || []
+    } else {
+      ElMessage.error(res.message || '加载失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '加载失败')
+  } finally {
+    loading.value = false
   }
+}
+
+// 打开新增
+const handleAdd = () => {
+  dialogTitle.value = '发送通知'
+  editingId.value = null
+  form.value = { userId: 0, title: '', content: '', type: 'system', priority: 'Normal' }
   dialogVisible.value = true
 }
 
-// 打开编辑对话框
-const handleEdit = (row: Notification) => {
+// 打开编辑
+const handleEdit = (row: any) => {
   dialogTitle.value = '编辑通知'
   editingId.value = row.id
   form.value = {
-    notificationNo: row.notificationNo,
+    userId: row.userId,
     title: row.title,
-    type: row.type,
-    level: row.level,
     content: row.content,
-    sendMethod: row.sendMethod,
-    sendScope: row.sendScope,
-    targetBuildings: row.targetBuildings || [],
-    publisher: row.publisher,
-    startTime: row.startTime ? row.startTime.split('T')[0] : '',
-    endTime: row.endTime ? row.endTime.split('T')[0] : '',
-    status: row.status,
-    isPinned: row.isPinned,
-    remark: row.remark
+    type: row.type,
+    priority: row.priority
   }
   dialogVisible.value = true
 }
 
 // 提交表单
-const handleSubmit = () => {
-  if (!form.value.title.trim()) {
-    ElMessage.warning('请输入通知标题')
-    return
-  }
-  if (!form.value.content.trim()) {
-    ElMessage.warning('请输入通知内容')
-    return
-  }
+const handleSubmit = async () => {
+  if (!form.value.title.trim()) { ElMessage.warning('请输入标题'); return }
+  if (!form.value.content.trim()) { ElMessage.warning('请输入内容'); return }
 
-  const data = {
-    ...form.value,
-    startTime: form.value.startTime ? form.value.startTime + 'T00:00:00' : '',
-    endTime: form.value.endTime ? form.value.endTime + 'T23:59:59' : ''
+  try {
+    const payload = {
+      userId: form.value.userId ?? 0,
+      title: form.value.title,
+      content: form.value.content,
+      type: form.value.type,
+      priority: form.value.priority
+    }
+    if (editingId.value) {
+      await notificationApi.put(`/api/tenant/notification/notifications/${editingId.value}`, payload)
+      ElMessage.success('更新成功')
+    } else {
+      await notificationApi.post('/api/tenant/notification/notifications', payload)
+      ElMessage.success('发送成功')
+    }
+    dialogVisible.value = false
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
   }
-
-  if (editingId.value) {
-    updateNotification(editingId.value, data)
-    ElMessage.success('更新成功')
-  } else {
-    addNotification({
-      ...data,
-      publishTime: undefined,
-      attachments: []
-    })
-    ElMessage.success('添加成功')
-  }
-
-  notifications.value = getAllNotifications()
-  dialogVisible.value = false
 }
 
-// 删除通知
-const handleDelete = async (row: Notification) => {
+// 删除
+const handleDelete = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定删除通知 "${row.title}" 吗？`, '删除确认', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    deleteNotification(row.id)
-    notifications.value = getAllNotifications()
+    await ElMessageBox.confirm(`确定删除通知「${row.title}」吗？`, '删除确认', { type: 'warning' })
+    await notificationApi.delete(`/api/tenant/notification/notifications/${row.id}`)
     ElMessage.success('删除成功')
-  } catch {
-    // 取消
+    await loadData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
   }
 }
 
-// 查看详情
-const handleView = (row: Notification) => {
-  viewingNotification.value = row
-  detailDialogVisible.value = true
-}
-
-// 发布
-const handlePublish = async (row: Notification) => {
+// 标记已读
+const handleMarkRead = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定发布通知 "${row.title}" 吗？`, '发布确认', {
-      confirmButtonText: '发布',
-      cancelButtonText: '取消',
-      type: 'info'
-    })
-    publishNotification(row.id)
-    notifications.value = getAllNotifications()
-    ElMessage.success('通知已发布')
-  } catch {
-    // 取消
+    await notificationApi.put(`/api/tenant/notification/notifications/${row.id}/read`, {})
+    ElMessage.success('已标记为已读')
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
   }
 }
 
-// 撤回
-const handleCancel = async (row: Notification) => {
-  try {
-    await ElMessageBox.confirm(`确定撤回通知 "${row.title}" 吗？`, '撤回确认', {
-      confirmButtonText: '撤回',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    cancelNotification(row.id)
-    notifications.value = getAllNotifications()
-    ElMessage.success('通知已撤回')
-  } catch {
-    // 取消
-  }
+// 获取状态类型（用于表格标签颜色）
+const getStatusType = (notification: any) => {
+  if (notification.isRead) return 'info'
+  if (notification.priority === 'Urgent') return 'danger'
+  if (notification.priority === 'High') return 'warning'
+  return 'success'
 }
 
-// 置顶/取消置顶
-const handleTogglePin = async (row: Notification) => {
-  togglePinNotification(row.id)
-  notifications.value = getAllNotifications()
-  ElMessage.success(row.isPinned ? '已取消置顶' : '已置顶')
-}
+const getTypeLabel = (type: string) => typeLabels[type] || type
+const getPriorityLabel = (priority: string) => priorityLabels[priority] || priority
 
-// 刷新数据
-const handleRefresh = () => {
-  notifications.value = getAllNotifications()
-  ElMessage.success('已刷新')
-}
-
-// 格式化内容（换行）
-const formatContent = (content: string) => {
-  return content.replace(/\n/g, '<br>')
-}
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <template>
-  <div class="notification-page">
-    <el-card>
-      <template #header>
-        <div class="header">
-          <span>消息管理</span>
-          <div class="header-actions">
-            <el-button @click="openFieldConfig">
-              <el-icon><Setting /></el-icon> 配置字段
-            </el-button>
-            <el-button @click="handleRefresh">
-              <el-icon><Refresh /></el-icon> 刷新
-            </el-button>
-            <el-button type="primary" @click="handleAdd">
-              <el-icon><Plus /></el-icon> 新增通知
-            </el-button>
+  <div class="notification-container">
+    <!-- 统计卡片 -->
+    <el-row :gutter="16" class="stats-row">
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <div class="stat-card">
+            <el-icon size="32" color="#409EFF"><Bell /></el-icon>
+            <div>
+              <div class="stat-value">{{ stats.total }}</div>
+              <div class="stat-label">通知总数</div>
+            </div>
           </div>
-        </div>
-      </template>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <div class="stat-card">
+            <el-icon size="32" color="#67C23A"><View /></el-icon>
+            <div>
+              <div class="stat-value">{{ stats.unread }}</div>
+              <div class="stat-label">未读通知</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <div class="stat-card">
+            <el-icon size="32" color="#E6A23C"><Top /></el-icon>
+            <div>
+              <div class="stat-value">{{ stats.today }}</div>
+              <div class="stat-label">今日发送</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
 
-      <el-alert
-        title="消息管理说明"
-        description="管理所有系统通知、公告、提醒等，支持发布、撤回、置顶功能。"
-        type="info"
-        :closable="false"
-        style="margin-bottom: 20px;"
-      />
-
-      <!-- 统计卡片 -->
-      <div class="stats-grid">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ stats.total }}</div>
-            <div class="stat-label">通知总数</div>
-          </div>
-        </el-card>
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value published">{{ stats.published }}</div>
-            <div class="stat-label">已发布</div>
-          </div>
-        </el-card>
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value draft">{{ stats.draft }}</div>
-            <div class="stat-label">草稿</div>
-          </div>
-        </el-card>
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value pinned">{{ stats.pinned }}</div>
-            <div class="stat-label">置顶</div>
-          </div>
-        </el-card>
+    <!-- 操作栏 -->
+    <div class="toolbar">
+      <div class="filters">
+        <el-select v-model="filterType" placeholder="通知类型" clearable style="width: 140px">
+          <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <el-select v-model="filterPriority" placeholder="优先级" clearable style="width: 120px">
+          <el-option v-for="opt in priorityOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
       </div>
+      <div class="actions">
+        <el-button type="primary" :icon="Plus" @click="handleAdd">发送通知</el-button>
+        <el-button :icon="Refresh" @click="loadData">刷新</el-button>
+      </div>
+    </div>
 
-      <!-- 通知列表 -->
-      <el-table :data="filteredNotifications" stripe @row-click="handleView">
-        <el-table-column label="" width="40" align="center">
-          <template #default="{ row }">
-            <el-icon v-if="row.isPinned" color="#E6A23C"><Top /></el-icon>
-          </template>
-        </el-table-column>
-        <el-table-column prop="notificationNo" label="编号" width="120" />
-        <el-table-column prop="title" label="通知标题" min-width="200">
-          <template #default="{ row }">
-            <span style="font-weight: 600;">{{ row.title }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="type" label="类型" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small">{{ notificationTypeLabels[row.type] }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="level" label="级别" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag :style="{ backgroundColor: getLevelColor(row.level), borderColor: getLevelColor(row.level), color: '#fff' }" size="small">
-              {{ notificationLevelLabels[row.level] }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="sendMethod" label="发送方式" width="100" align="center">
-          <template #default="{ row }">
-            {{ sendMethodLabels[row.sendMethod as keyof typeof sendMethodLabels] || row.sendMethod }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="publishTime" label="发布时间" width="150" align="center">
-          <template #default="{ row }">
-            {{ row.publishTime ? row.publishTime.slice(0, 16).replace('T', ' ') : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ notificationStatusLabels[row.status] }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click.stop="handleEdit(row)">编辑</el-button>
-            <el-button link type="success" size="small" @click.stop="handlePublish(row)" v-if="row.status === 'draft'">
-              发布
-            </el-button>
-            <el-button link type="warning" size="small" @click.stop="handleCancel(row)" v-if="row.status === 'published'">
-              <el-icon><Close /></el-icon> 撤回
-            </el-button>
-            <el-button link type="info" size="small" @click.stop="handleTogglePin(row)">
-              <el-icon><Top /></el-icon> {{ row.isPinned ? '取消置顶' : '置顶' }}
-            </el-button>
-            <el-button link type="danger" size="small" @click.stop="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <!-- 表格 -->
+    <el-table :data="filteredNotifications" v-loading="loading" stripe style="width: 100%">
+      <el-table-column prop="id" label="ID" width="60" />
+      <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="type" label="类型" width="100">
+        <template #default="{ row }">{{ getTypeLabel(row.type) }}</template>
+      </el-table-column>
+      <el-table-column prop="priority" label="优先级" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.priority === 'Urgent' ? 'danger' : row.priority === 'High' ? 'warning' : 'info'" size="small">
+            {{ getPriorityLabel(row.priority) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="isRead" label="状态" width="80">
+        <template #default="{ row }">
+          <el-tag :type="row.isRead ? 'info' : 'success'" size="small">{{ row.isRead ? '已读' : '未读' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="createdAt" label="发送时间" width="160">
+        <template #default="{ row }">{{ row.createdAt?.replace('T', ' ').slice(0, 16) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="180" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click="handleMarkRead(row)" :disabled="row.isRead">已读</el-button>
+          <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+          <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
 
-    <!-- 新增/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px">
-      <el-form label-width="100px">
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="通知编号">
-              <el-input v-model="form.notificationNo" disabled />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="通知标题" required>
-              <el-input v-model="form.title" placeholder="请输入通知标题" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="通知类型">
-              <el-select v-model="form.type" style="width: 100%">
-                <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="紧急程度">
-              <el-select v-model="form.level" style="width: 100%">
-                <el-option v-for="opt in levelOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="发送方式">
-              <el-select v-model="form.sendMethod" style="width: 100%">
-                <el-option v-for="opt in methodOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+    <!-- 发送/编辑对话框 -->
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" destroy-on-close>
+      <el-form :model="form" label-width="100px">
+        <el-form-item label="目标用户">
+          <el-input-number v-model="form.userId" :min="0" placeholder="0表示全体用户" style="width: 200px" />
+          <span class="form-tip">（0 = 全体用户）</span>
+        </el-form-item>
+        <el-form-item label="通知标题" required>
+          <el-input v-model="form.title" placeholder="请输入通知标题" maxlength="200" show-word-limit />
+        </el-form-item>
         <el-form-item label="通知内容" required>
-          <el-input v-model="form.content" type="textarea" rows="5" placeholder="请输入通知内容" />
+          <el-input v-model="form.content" type="textarea" :rows="4" placeholder="请输入通知内容" maxlength="2000" show-word-limit />
         </el-form-item>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="发布人">
-              <el-input v-model="form.publisher" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="状态">
-              <el-select v-model="form.status" style="width: 100%">
-                <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="生效时间">
-              <el-date-picker v-model="form.startTime" type="date" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="失效时间">
-              <el-date-picker v-model="form.endTime" type="date" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="置顶">
-          <el-switch v-model="form.isPinned" />
+        <el-form-item label="通知类型">
+          <el-select v-model="form.type" style="width: 200px">
+            <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
+        <el-form-item label="优先级">
+          <el-select v-model="form.priority" style="width: 200px">
+            <el-option v-for="opt in priorityOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -454,117 +291,17 @@ const formatContent = (content: string) => {
         <el-button type="primary" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
-
-    <!-- 通知详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="通知详情" width="700px">
-      <div v-if="viewingNotification" class="notification-detail">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="通知编号">{{ viewingNotification.notificationNo }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(viewingNotification.status)">
-              {{ notificationStatusLabels[viewingNotification.status] }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="通知标题" :span="2">
-            <span style="font-weight: 600; font-size: 16px;">{{ viewingNotification.title }}</span>
-            <el-icon v-if="viewingNotification.isPinned" color="#E6A23C" style="margin-left: 8px;"><Top /></el-icon>
-          </el-descriptions-item>
-          <el-descriptions-item label="类型">
-            <el-tag size="small">{{ notificationTypeLabels[viewingNotification.type] }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="级别">
-            <el-tag :style="{ backgroundColor: getLevelColor(viewingNotification.level), borderColor: getLevelColor(viewingNotification.level), color: '#fff' }" size="small">
-              {{ notificationLevelLabels[viewingNotification.level] }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="发送方式">
-            {{ sendMethodLabels[viewingNotification.sendMethod as keyof typeof sendMethodLabels] || viewingNotification.sendMethod }}
-          </el-descriptions-item>
-          <el-descriptions-item label="发布人">{{ viewingNotification.publisher }}</el-descriptions-item>
-          <el-descriptions-item label="发布时间">
-            {{ viewingNotification.publishTime ? viewingNotification.publishTime.slice(0, 16).replace('T', ' ') : '-' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="生效时间">
-            {{ viewingNotification.startTime ? viewingNotification.startTime.slice(0, 10) : '-' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="失效时间">
-            {{ viewingNotification.endTime ? viewingNotification.endTime.slice(0, 10) : '-' }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <el-card shadow="never" style="margin-top: 20px;">
-          <template #header>
-            <span>通知内容</span>
-          </template>
-          <div v-html="formatContent(viewingNotification.content)" style="line-height: 1.8;"></div>
-        </el-card>
-
-        <el-alert
-          v-if="viewingNotification.remark"
-          :title="'备注：' + viewingNotification.remark"
-          type="info"
-          :closable="false"
-          style="margin-top: 15px;"
-        />
-      </div>
-      <template #footer>
-        <el-button @click="detailDialogVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 字段配置对话框 -->
-    <FieldConfigDialog
-      ref="fieldDialogRef"
-      module="notification"
-      module-name="消息管理"
-      @update="refreshFields"
-    />
   </div>
 </template>
 
 <style scoped>
-.notification-page {
-  width: 100%;
-}
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.header-actions {
-  display: flex;
-  gap: 10px;
-}
-.stats-grid {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
-}
-.stat-card {
-  flex: 1;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-.stat-card:hover {
-  transform: translateY(-2px);
-}
-.stat-content {
-  text-align: center;
-}
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #409EFF;
-}
-.stat-value.published { color: #67C23A; }
-.stat-value.draft { color: #E6A23C; }
-.stat-value.pinned { color: #F56C6C; }
-.stat-label {
-  font-size: 13px;
-  color: #909399;
-  margin-top: 5px;
-}
-.notification-detail {
-  padding: 10px;
-}
+.notification-container { padding: 20px; }
+.stats-row { margin-bottom: 20px; }
+.stat-card { display: flex; align-items: center; gap: 16px; }
+.stat-value { font-size: 28px; font-weight: bold; color: #303133; }
+.stat-label { font-size: 14px; color: #909399; }
+.toolbar { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.filters { display: flex; gap: 12px; }
+.actions { display: flex; gap: 8px; }
+.form-tip { margin-left: 8px; color: #909399; font-size: 12px; }
 </style>

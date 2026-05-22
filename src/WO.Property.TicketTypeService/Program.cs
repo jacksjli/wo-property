@@ -7,7 +7,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.Shared.Configuration;
-using WO.Property.Shared.Logging;
 using WO.Property.TicketTypeService.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -115,8 +114,6 @@ CREATE TABLE IF NOT EXISTS ticket_types (
     await cmd.ExecuteNonQueryAsync();
 }
 
-app.UseRequestLogging();
-app.UseGlobalExceptionHandler();
 app.UseCors("AllowAdminPortal");
 app.UseAuthentication();
 app.UseAuthorization();

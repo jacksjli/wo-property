@@ -2,6 +2,7 @@ using Xunit;
 using Moq;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using WO.Property.TicketService.Middleware;
 using WO.Property.TicketService.Tenant;
@@ -14,9 +15,11 @@ public class TenantRoutingMiddlewareTests
 {
     private TenantDbFactory CreateFactory()
     {
-        var config = new ConfigurationBuilder().Build();
+        var mockEnv = new Mock<IWebHostEnvironment>();
+        mockEnv.Setup(e => e.ContentRootPath).Returns("/Users/mac/Projects/WO-Property-Management/src/WO.Property.TicketService");
+        var configLoader = new TenantConfigLoader(mockEnv.Object);
         var logger = new Mock<ILogger<TenantDbFactory>>().Object;
-        return new TenantDbFactory(config, logger);
+        return new TenantDbFactory(configLoader, logger);
     }
 
     private ILogger<TenantRoutingMiddleware> CreateLogger()
@@ -89,7 +92,7 @@ public class TenantRoutingMiddlewareTests
     public async Task InvokeAsync_InvalidToken_CallsNextWithoutSetting()
     {
         var factory = CreateFactory();
-        factory.SetCurrentTenantCode("tenant_x"); // pre-set
+        factory.SetCurrentTenantCode("tenant_a"); // pre-set
         var logger = CreateLogger();
         var next = new RequestDelegate(_ => Task.CompletedTask);
         var middleware = new TenantRoutingMiddleware(next, logger);
@@ -98,6 +101,6 @@ public class TenantRoutingMiddlewareTests
 
         await middleware.InvokeAsync(httpContext, factory);
 
-        Assert.Equal("tenant_x", factory.GetCurrentTenantCode()); // unchanged
+        Assert.Equal("tenant_a", factory.GetCurrentTenantCode()); // unchanged
     }
 }

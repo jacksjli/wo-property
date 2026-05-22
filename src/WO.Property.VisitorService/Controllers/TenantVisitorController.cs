@@ -2,19 +2,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WO.Property.VisitorService.Data;
 using WO.Property.VisitorService.Models;
-using VisitStatusEnum = WO.Property.VisitorService.Models.VisitStatus;
-using VisitTypeEnum = WO.Property.VisitorService.Models.VisitType;
 
 namespace WO.Property.VisitorService.Controllers;
 
 [ApiController]
-[Route("api/tenant/visitor")]
+[Route("api/tenant/visitor/visitors")]
 public class TenantVisitorController : ControllerBase
 {
     private readonly IDbContextFactory<TenantDbContext> _dbFactory;
     private readonly ILogger<TenantVisitorController> _logger;
 
-    public TenantVisitorController(IDbContextFactory<TenantDbContext> dbFactory, ILogger<TenantVisitorController> logger)
+    public TenantVisitorController(
+        IDbContextFactory<TenantDbContext> dbFactory,
+        ILogger<TenantVisitorController> logger)
     {
         _dbFactory = dbFactory;
         _logger = logger;
@@ -23,35 +23,45 @@ public class TenantVisitorController : ControllerBase
     private TenantDbContext CreateDbContext() => _dbFactory.CreateDbContext();
 
     // GET /api/tenant/visitor/visitors
-    [HttpGet("visitors")]
-    public async Task<IActionResult> GetVisitors([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null)
+    [HttpGet]
+    public async Task<IActionResult> GetVisitors(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null)
     {
         try
         {
             using var db = CreateDbContext();
             var query = db.Visitors.AsQueryable();
+
             if (!string.IsNullOrEmpty(status))
-                query = query.Where(v => v.Status.ToString() == status);
+                query = query.Where(v => v.Status == status);
+
             var total = await query.CountAsync();
             var items = await query
-                .OrderByDescending(v => v.ScheduledDate)
+                .OrderByDescending(v => v.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(v => new
                 {
                     id = v.Id,
-                    visitorNumber = v.VisitorNumber,
                     visitorName = v.VisitorName,
                     visitorPhone = v.VisitorPhone ?? "",
-                    type = v.Type.ToString(),
-                    hostName = v.HostName,
-                    hostUnit = v.HostUnit ?? "",
-                    visitLocation = v.VisitLocation ?? "",
-                    scheduledDate = v.ScheduledDate,
-                    status = v.Status.ToString(),
-                    accessGranted = v.AccessGranted
+                    idCardNumber = v.IdCardNumber ?? "",
+                    visitPurpose = v.VisitPurpose ?? "",
+                    visitDate = v.VisitDate,
+                    visitTime = v.VisitTime,
+                    leaveTime = v.LeaveTime,
+                    buildingId = v.BuildingId,
+                    roomId = v.RoomId,
+                    hostName = v.HostName ?? "",
+                    hostPhone = v.HostPhone ?? "",
+                    status = v.Status,
+                    remarks = v.Remarks ?? "",
+                    createdAt = v.CreatedAt
                 })
                 .ToListAsync();
+
             return Ok(new { success = true, data = items, total, page, pageSize });
         }
         catch (Exception ex)
@@ -61,83 +71,294 @@ public class TenantVisitorController : ControllerBase
         }
     }
 
+    // GET /api/tenant/visitor/visitors/{id}
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetVisitor(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var v = await db.Visitors.FindAsync(id);
+            if (v == null)
+                return NotFound(new { success = false, message = "访客记录不存在" });
+
+            return Ok(new { success = true, data = v });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetVisitor {Id} failed", id);
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
     // POST /api/tenant/visitor/visitors
-    [HttpPost("visitors")]
+    [HttpPost]
     public async Task<IActionResult> CreateVisitor([FromBody] CreateVisitorRequest request)
     {
         try
         {
             using var db = CreateDbContext();
-            var visitorNum = $"V-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..4].ToUpper()}";
-            var accessCode = new Random().Next(100000, 999999).ToString();
+
+            // 生成访客编号
+            var count = await db.Visitors.CountAsync() + 1;
+            var visitorNumber = $"V-{DateTime.Now:yyyyMMdd}-{(1000 + count):D4}";
+
             var visitor = new Visitor
             {
-                VisitorNumber = visitorNum,
                 VisitorName = request.VisitorName,
                 VisitorPhone = request.VisitorPhone,
-                Type = VisitTypeEnum.Personal,
+                IdCardNumber = request.IdCardNumber,
+                VisitPurpose = request.VisitPurpose,
+                VisitDate = request.VisitDate ?? DateTime.Today,
+                VisitTime = request.VisitTime ?? DateTime.Now.TimeOfDay,
+                BuildingId = request.BuildingId,
+                RoomId = request.RoomId,
                 HostName = request.HostName,
                 HostPhone = request.HostPhone,
-                HostUnit = request.HostUnit,
-                VisitLocation = request.VisitLocation,
-                ScheduledDate = request.ScheduledDate,
-                Purpose = request.Purpose,
-                Status = VisitStatusEnum.Pending,
-                AccessCode = accessCode,
+                Status = "registered",
+                Remarks = request.Remarks,
                 CreatedAt = DateTime.UtcNow
             };
+
             db.Visitors.Add(visitor);
             await db.SaveChangesAsync();
-            return Ok(new { success = true, message = "访客登记成功", data = new { visitorNumber = visitorNum, accessCode } });
+
+            return Ok(new { success = true, data = visitor, message = "访客登记成功" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "CreateVisitor failed");
-            return Ok(new { success = false, message = ex.Message });
+            return Ok(new { success = false, message = ex.Message, detail = ex.InnerException?.Message });
         }
     }
 
-    // PUT /api/tenant/visitor/visitors/{id}/status
-    [HttpPut("visitors/{id}/status")]
-    public async Task<IActionResult> UpdateVisitorStatus(int id, [FromBody] UpdateVisitorStatusRequest request)
+    // PUT /api/tenant/visitor/visitors/{id}
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateVisitor(int id, [FromBody] UpdateVisitorRequest request)
     {
         try
         {
             using var db = CreateDbContext();
             var visitor = await db.Visitors.FindAsync(id);
-            if (visitor == null) return NotFound(new { success = false, message = "访客记录不存在" });
+            if (visitor == null)
+                return NotFound(new { success = false, message = "访客记录不存在" });
+
             if (!string.IsNullOrEmpty(request.Status))
-                visitor.Status = Enum.Parse<VisitStatusEnum>(request.Status);
-            if (request.ActualCheckInTime.HasValue) visitor.ActualCheckInTime = request.ActualCheckInTime;
-            if (request.ActualCheckOutTime.HasValue) visitor.ActualCheckOutTime = request.ActualCheckOutTime;
-            if (request.AccessGranted.HasValue) visitor.AccessGranted = request.AccessGranted.Value;
+                visitor.Status = request.Status;
+            if (request.LeaveTime.HasValue)
+                visitor.LeaveTime = request.LeaveTime.Value.TimeOfDay;
+            if (request.Remarks != null)
+                visitor.Remarks = request.Remarks;
+
+            visitor.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
-            return Ok(new { success = true, message = "状态更新成功" });
+
+            return Ok(new { success = true, data = visitor, message = "更新成功" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "UpdateVisitorStatus failed");
+            _logger.LogError(ex, "UpdateVisitor {Id} failed", id);
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // DELETE /api/tenant/visitor/visitors/{id}
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteVisitor(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var visitor = await db.Visitors.FindAsync(id);
+            if (visitor == null)
+                return NotFound(new { success = false, message = "访客记录不存在" });
+
+            db.Visitors.Remove(visitor);
+            await db.SaveChangesAsync();
+
+            return Ok(new { success = true, message = "删除成功" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DeleteVisitor {Id} failed", id);
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // POST /api/tenant/visitor/visitors/{id}/check-in
+    [HttpPost("{id}/check-in")]
+    public async Task<IActionResult> CheckIn(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var visitor = await db.Visitors.FindAsync(id);
+            if (visitor == null)
+                return NotFound(new { success = false, message = "访客记录不存在" });
+
+            visitor.Status = "checked_in";
+            visitor.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            return Ok(new { success = true, message = "登记入住成功" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckIn {Id} failed", id);
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // POST /api/tenant/visitor/visitors/{id}/check-out
+    [HttpPost("{id}/check-out")]
+    public async Task<IActionResult> CheckOut(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var visitor = await db.Visitors.FindAsync(id);
+            if (visitor == null)
+                return NotFound(new { success = false, message = "访客记录不存在" });
+
+            visitor.Status = "checked_out";
+            visitor.LeaveTime = DateTime.Now.TimeOfDay;
+            visitor.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            return Ok(new { success = true, message = "退房成功" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CheckOut {Id} failed", id);
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ==================== 外部人员管理 ====================
+    [HttpGet("external-persons")]
+    public async Task<IActionResult> GetExternalPersons([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? type = null)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.ExternalPersons.AsQueryable();
+            if (!string.IsNullOrEmpty(type))
+                query = query.Where(e => e.Type == type);
+            
+            var total = await query.CountAsync();
+            var items = await query
+                .OrderByDescending(e => e.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+            
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetExternalPersons failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpGet("external-persons/{id}")]
+    public async Task<IActionResult> GetExternalPerson(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var person = await db.ExternalPersons.FindAsync(id);
+            if (person == null)
+                return NotFound(new { success = false, message = "外部人员不存在" });
+            return Ok(new { success = true, data = person });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetExternalPerson failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-persons")]
+    public async Task<IActionResult> CreateExternalPerson([FromBody] CreateExternalPersonRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var person = new ExternalPerson
+            {
+                Name = request.Name,
+                Phone = request.Phone,
+                Type = request.Type,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.ExternalPersons.Add(person);
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, data = person });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CreateExternalPerson failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpPut("external-persons/{id}")]
+    public async Task<IActionResult> UpdateExternalPerson(int id, [FromBody] UpdateExternalPersonRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var person = await db.ExternalPersons.FindAsync(id);
+            if (person == null)
+                return NotFound(new { success = false, message = "外部人员不存在" });
+            
+            if (!string.IsNullOrEmpty(request.Name)) person.Name = request.Name;
+            if (!string.IsNullOrEmpty(request.Phone)) person.Phone = request.Phone;
+            if (!string.IsNullOrEmpty(request.Type)) person.Type = request.Type;
+            
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, data = person });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UpdateExternalPerson failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpDelete("external-persons/{id}")]
+    public async Task<IActionResult> DeleteExternalPerson(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var person = await db.ExternalPersons.FindAsync(id);
+            if (person == null)
+                return NotFound(new { success = false, message = "外部人员不存在" });
+            
+            db.ExternalPersons.Remove(person);
+            await db.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DeleteExternalPerson failed");
             return Ok(new { success = false, message = ex.Message });
         }
     }
 }
 
-public class CreateVisitorRequest
+public class CreateExternalPersonRequest
 {
-    public string VisitorName { get; set; } = "";
-    public string? VisitorPhone { get; set; }
-    public string HostName { get; set; } = "";
-    public string? HostPhone { get; set; }
-    public string? HostUnit { get; set; }
-    public string? VisitLocation { get; set; }
-    public DateTime? ScheduledDate { get; set; }
-    public string? Purpose { get; set; }
+    public string Name { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Type { get; set; } = "";
 }
 
-public class UpdateVisitorStatusRequest
+public class UpdateExternalPersonRequest
 {
-    public string? Status { get; set; }
-    public DateTime? ActualCheckInTime { get; set; }
-    public DateTime? ActualCheckOutTime { get; set; }
-    public bool? AccessGranted { get; set; }
+    public string? Name { get; set; }
+    public string? Phone { get; set; }
+    public string? Type { get; set; }
 }

@@ -222,6 +222,11 @@ public class Ticket : BaseEntity
     public string? Category { get; set; }
     public string Status { get; set; } = TicketStatusValues.Created;
     public string Priority { get; set; } = "Medium";
+    public int? TicketTypeId { get; set; }
+    public int? AreaId { get; set; }
+    public int? BuildingId { get; set; }
+    public int? RoomId { get; set; }
+    public List<int>? JobTypeIds { get; set; }
     public string? Location { get; set; }
     public string? Images { get; set; }
     public int? CreatorPersonId { get; set; }

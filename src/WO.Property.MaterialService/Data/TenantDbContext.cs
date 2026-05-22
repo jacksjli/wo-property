@@ -25,18 +25,22 @@ public class TenantDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.ToTable("materials");
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.Code).HasColumnName("code");
-            entity.Property(e => e.Name).HasColumnName("name");
-            entity.Property(e => e.Description).HasColumnName("description");
-            entity.Property(e => e.CategoryId).HasColumnName("category_id");
-            entity.Property(e => e.Unit).HasColumnName("unit");
-            entity.Property(e => e.UnitPrice).HasColumnName("unit_price").HasColumnType("decimal(18,2)");
-            entity.Property(e => e.SafetyStock).HasColumnName("safety_stock");
-            entity.Property(e => e.MaxStock).HasColumnName("max_stock");
-            entity.Property(e => e.CurrentStock).HasColumnName("current_stock");
-            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.MaterialNo).HasColumnName("MaterialNo").HasMaxLength(50);
+            entity.Property(e => e.Name).HasColumnName("Name").HasMaxLength(100);
+            entity.Property(e => e.Spec).HasColumnName("Spec").HasMaxLength(100);
+            entity.Property(e => e.Unit).HasColumnName("Unit").HasMaxLength(20);
+            entity.Property(e => e.Quantity).HasColumnName("Quantity");
+            entity.Property(e => e.MinQuantity).HasColumnName("MinQuantity");
+            entity.Property(e => e.Price).HasColumnName("Price").HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Location).HasColumnName("Location").HasMaxLength(100);
+            entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20).HasConversion<string>();
+            entity.Property(e => e.Supplier).HasColumnName("Supplier").HasMaxLength(100);
+            entity.Property(e => e.PurchaseDate).HasColumnName("PurchaseDate");
+            entity.Property(e => e.ExpirationDate).HasColumnName("ExpirationDate");
+            entity.Property(e => e.Remark).HasColumnName("Remark");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.CreatedBy);
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
@@ -45,16 +49,16 @@ public class TenantDbContext : DbContext
         modelBuilder.Entity<MaterialCategory>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.ToTable("material_categories");
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.Name).HasColumnName("name");
-            entity.Property(e => e.Code).HasColumnName("code");
-            entity.Property(e => e.Description).HasColumnName("description");
-            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.ToTable("MaterialCategories");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Name).HasColumnName("Name");
+            entity.Property(e => e.Code).HasColumnName("Code");
+            entity.Property(e => e.Description).HasColumnName("Description");
+            entity.Property(e => e.CreatedBy).HasColumnName("CreatedBy");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
-            entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.IsDeleted).HasColumnName("IsDeleted").HasDefaultValue(false);
         });
 
         modelBuilder.Entity<StockTransaction>(entity =>

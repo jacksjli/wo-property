@@ -12,6 +12,16 @@ const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
 
 const getKeyFields = () => getActiveFields('key')
 
+// 构建字段标签映射（从字段配置动态获取显示名）
+const keyLabels = computed(() => {
+  const fields = getKeyFields()
+  const labels: Record<string, any> = {}
+  fields.forEach((f: any) => {
+    labels[f.key] = { label: f.name }
+  })
+  return labels
+})
+
 const openFieldConfig = async () => {
   const verified = await verifyAdminPassword()
   if (verified) {
@@ -158,12 +168,30 @@ const handleSubmit = async () => {
   if (!form.value.keyNo.trim()) { ElMessage.warning('请输入钥匙编号'); return }
   if (!form.value.name.trim()) { ElMessage.warning('请输入钥匙名称'); return }
 
+  // 构建 PascalCase 的 payload
+  const payload = {
+    KeyNo: form.value.keyNo,
+    Name: form.value.name,
+    Type: form.value.type,
+    Location: form.value.location,
+    Building: form.value.building,
+    Floor: form.value.floor,
+    DoorNo: form.value.doorNo,
+    Quantity: form.value.quantity,
+    Status: form.value.status,
+    Holder: form.value.holder,
+    HolderPhone: form.value.holderPhone,
+    Remark: form.value.remark,
+    LastBorrowTime: null,
+    BorrowCount: 0,
+  }
+
   try {
     if (editingId.value) {
-      await masterApi.put(`/keys/${editingId.value}`, form.value)
+      await masterApi.put(`/keys/${editingId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/keys', form.value)
+      await masterApi.post('/keys', payload)
       ElMessage.success('添加成功')
     }
     await loadData()

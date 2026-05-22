@@ -5,6 +5,7 @@ import { Plus, Setting } from '@element-plus/icons-vue'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
+import { getDevices, createDevice, updateDevice, deleteDevice } from '@/api/device'
 
 const { isAdmin, verifyAdminPassword } = usePermission()
 
@@ -30,13 +31,26 @@ const refreshFields = () => {
 
 // 设备数据
 const loading = ref(false)
-const devices = ref<any[]>([
-  { id: 1, deviceNo: 'DEV-001', name: 'A栋电梯', model: '三菱GPS-III', serialNumber: 'SN20260001', category: '电梯设备', location: 'A栋1楼', purchaseDate: '2024-01-15', warrantyEndDate: '2029-01-14', status: 'Active', currentStatus: 'Normal', notes: '' },
-  { id: 2, deviceNo: 'DEV-002', name: '消防主机', model: '海湾GST5000', serialNumber: 'SN20260002', category: '消防设备', location: '监控室', purchaseDate: '2023-06-01', warrantyEndDate: '2028-05-31', status: 'Active', currentStatus: 'Normal', notes: '' },
-  { id: 3, deviceNo: 'DEV-003', name: '监控摄像头-1', model: '海康DS-2CD3T86F', serialNumber: 'SN20260003', category: '监控设备', location: '地下车库', purchaseDate: '2025-03-10', warrantyEndDate: '2027-03-09', status: 'Active', currentStatus: 'Warning', notes: '' },
-  { id: 4, deviceNo: 'DEV-004', name: '门禁控制器', model: '海康DS-K2600', serialNumber: 'SN20260004', category: '门禁设备', location: 'A栋大堂', purchaseDate: '2025-03-10', warrantyEndDate: '2027-03-09', status: 'Maintenance', currentStatus: 'Fault', notes: '' },
-  { id: 5, deviceNo: 'DEV-005', name: '消防水泵', model: 'XBD40/15', serialNumber: 'SN20260005', category: '消防设备', location: '地下车库', purchaseDate: '2023-06-01', warrantyEndDate: '2028-05-31', status: 'Active', currentStatus: 'Normal', notes: '' },
-])
+const devices = ref<any[]>([])
+
+// 加载设备数据
+const loadDevices = async () => {
+  try {
+    loading.value = true
+    const data = await getDevices()
+    // API 返回 { success, data: [...], total, page, pageSize }
+    devices.value = data?.data || data?.devices || data?.list || data || []
+  } catch (error) {
+    console.error('加载设备失败:', error)
+    ElMessage.error('加载设备数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadDevices()
+})
 
 // 对话框状态
 const dialogVisible = ref(false)
@@ -119,23 +133,31 @@ const handleSubmit = async () => {
     await formRef.value.validate()
     submitting.value = true
     
+    // 构建 PascalCase payload（与后端 DeviceService API 一致）
+    const payload = {
+      Code: form.value.code,
+      Name: form.value.name,
+      DeviceTypeId: form.value.deviceTypeId ? parseInt(form.value.deviceTypeId) : null,
+      BuildingId: form.value.buildingId ? parseInt(form.value.buildingId) : null,
+      Floor: form.value.floor ? parseInt(form.value.floor) : null,
+      Location: form.value.location || null,
+      PurchaseDate: form.value.purchaseDate || null,
+      Status: form.value.status || 'Active',
+      Remarks: form.value.remarks || null,
+    }
+    
     if (editingId.value) {
-      // 更新
-      const index = devices.value.findIndex(d => d.id === editingId.value)
-      if (index !== -1) {
-        devices.value[index] = { ...form.value, id: editingId.value }
-      }
+      await updateDevice(editingId.value, payload)
       ElMessage.success('设备更新成功')
     } else {
-      // 新增
-      const newId = Math.max(...devices.value.map(d => d.id), 0) + 1
-      devices.value.unshift({ ...form.value, id: newId })
+      await createDevice(payload)
       ElMessage.success('设备创建成功')
     }
     
     dialogVisible.value = false
-  } catch (error) {
-    // 表单验证失败
+    loadDevices()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '操作失败')
   } finally {
     submitting.value = false
   }
@@ -154,14 +176,12 @@ const handleDelete = async (row: any) => {
       }
     )
     
-    const index = devices.value.findIndex(d => d.id === row.id)
-    if (index !== -1) {
-      devices.value.splice(index, 1)
-    }
+    await deleteDevice(row.id)
+    await loadDevices()
     ElMessage.success('删除成功')
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败')
+      ElMessage.error(error?.message || '删除失败')
     }
   }
 }

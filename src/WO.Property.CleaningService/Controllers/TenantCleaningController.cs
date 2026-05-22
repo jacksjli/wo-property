@@ -6,7 +6,7 @@ using WO.Property.CleaningService.Tenant;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
-namespace WO.Property.CleaningService.Controllers;
+namespace WO.Property.CleaningService.Controllers {
 
 /// <summary>
 /// Phase 1 多租户清洁服务控制器
@@ -73,16 +73,15 @@ public class TenantCleaningController : ControllerBase
                 .Select(t => new
                 {
                     id = t.Id,
-                    staffId = t.StaffId,
-                    location = t.Location,
-                    content = t.Content,
+                    buildingId = t.BuildingId,
+                    cleaningArea = t.CleaningArea,
+                    cleanerName = t.CleanerName ?? "",
+                    cleaningType = t.CleaningType ?? "",
                     planDate = t.PlanDate,
+                    actualDate = t.ActualDate,
                     status = t.Status,
-                    checkInTime = t.CheckInTime,
-                    checkInPhoto = t.CheckInPhoto,
-                    remark = t.Remark,
-                    projectId = t.ProjectId,
-                    createdBy = t.CreatedBy ?? "",
+                    qualityLevel = t.QualityLevel ?? "",
+                    remarks = t.Remarks ?? "",
                     createdAt = t.CreatedAt
                 })
                 .ToListAsync();
@@ -107,13 +106,15 @@ public class TenantCleaningController : ControllerBase
 
             var task = new CleaningTask
             {
-                StaffId = request.StaffId,
-                Location = request.Location,
-                Content = request.Content ?? "",
+                BuildingId = request.BuildingId,
+                CleaningArea = request.CleaningArea,
+                CleanerName = request.CleanerName,
+                CleaningType = request.CleaningType,
                 PlanDate = request.PlanDate,
+                ActualDate = request.ActualDate,
                 Status = request.Status ?? "pending",
-                ProjectId = request.ProjectId,
-                CreatedBy = creatorId.ToString(),
+                QualityLevel = request.QualityLevel,
+                Remarks = request.Remarks,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -142,12 +143,12 @@ public class TenantCleaningController : ControllerBase
 
             if (!string.IsNullOrEmpty(request.Status))
                 task.Status = request.Status;
-            if (request.CheckInTime.HasValue)
-                task.CheckInTime = request.CheckInTime;
-            if (!string.IsNullOrEmpty(request.CheckInPhoto))
-                task.CheckInPhoto = request.CheckInPhoto;
-            if (!string.IsNullOrEmpty(request.Remark))
-                task.Remark = request.Remark;
+            if (request.ActualDate.HasValue)
+                task.ActualDate = request.ActualDate;
+            if (!string.IsNullOrEmpty(request.QualityLevel))
+                task.QualityLevel = request.QualityLevel;
+            if (!string.IsNullOrEmpty(request.Remarks))
+                task.Remarks = request.Remarks;
 
             await db.SaveChangesAsync();
             return Ok(new { success = true, data = task, message = "任务状态更新成功" });
@@ -240,20 +241,23 @@ public class TenantCleaningController : ControllerBase
 
 public class TenantCreateCleaningTaskRequest
 {
-    public int StaffId { get; set; }
-    public string Location { get; set; } = "";
-    public string? Content { get; set; }
-    public DateTime PlanDate { get; set; }
+    public int BuildingId { get; set; }
+    public string CleaningArea { get; set; } = "";
+    public string? CleanerName { get; set; }
+    public string? CleaningType { get; set; }
+    public DateTime? PlanDate { get; set; }
+    public DateTime? ActualDate { get; set; }
     public string? Status { get; set; }
-    public int ProjectId { get; set; }
+    public string? QualityLevel { get; set; }
+    public string? Remarks { get; set; }
 }
 
 public class TenantUpdateTaskStatusRequest
 {
     public string? Status { get; set; }
-    public DateTime? CheckInTime { get; set; }
-    public string? CheckInPhoto { get; set; }
-    public string? Remark { get; set; }
+    public DateTime? ActualDate { get; set; }
+    public string? QualityLevel { get; set; }
+    public string? Remarks { get; set; }
 }
 
 public class TenantCreateStaffRequest
@@ -264,4 +268,5 @@ public class TenantCreateStaffRequest
     public string? WorkShift { get; set; }
     public int ProjectId { get; set; }
     public bool? IsActive { get; set; }
+}
 }

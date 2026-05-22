@@ -3,7 +3,7 @@
  * 用法：const { getLabel, getEditable, fieldConfig } = useFieldConfig('ticket')
  */
 import { ref } from 'vue'
-import { masterDataService } from '@/api/masterDataService'
+import { masterDataApi } from '@/api/masterDataService'
 
 // 按模块缓存 field-config
 const fieldConfigCache = ref<Record<string, Record<string, any>>>({})
@@ -22,7 +22,7 @@ export function useFieldConfig() {
     }
     loadingCache.value[module] = true
     try {
-      const res = await masterDataService.getModuleFieldConfig(module)
+      const res = await masterDataApi.getModuleFieldConfig(module)
       if (res.data?.success) {
         fieldConfigCache.value[module] = res.data.data
         return fieldConfigCache.value[module]

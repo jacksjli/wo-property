@@ -114,6 +114,38 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# 阶段4: 单元测试（等同于 GitHub Actions test job）
+# -----------------------------------------------------------------------------
+echo ""
+echo -e "${YELLOW}=== 阶段4: 单元测试 ===${NC}"
+
+
+TEST_FAILED=""
+for csproj in "$SRC_ROOT"/*Tests/*.csproj; do
+  if [ ! -f "$csproj" ]; then
+    continue
+  fi
+  
+  svc_name=$(basename "$csproj" .csproj)
+  echo -n "  Testing $svc_name... "
+  
+  TEST_OUT=$(dotnet test "$csproj" --no-build 2>&1)
+  TEST_RESULT=$?
+  
+  if [ $TEST_RESULT -eq 0 ]; then
+    echo -e "${GREEN}OK${NC}"
+  else
+    echo -e "${RED}FAIL${NC}"
+    TEST_FAILED="$TEST_FAILED $svc_name"
+    CHECK_FAILED=1
+  fi
+done
+
+if [ -n "$TEST_FAILED" ]; then
+  echo -e "${RED}测试失败:$TEST_FAILED${NC}"
+fi
+
+# -----------------------------------------------------------------------------
 # 汇总
 # -----------------------------------------------------------------------------
 echo ""
@@ -127,5 +159,13 @@ else
   echo "规范检查:     ✅ 通过"
   echo "后端编译:     ✅ 21 服务"
   echo "前端编译:     ✅ admin-portal"
+  echo "单元测试:     ✅ 17 项目"
+  
+  # 单元测试成功 → 自动更新审计文档
+  if [ -f "$PROJECT_ROOT/scripts/post-test-hook.sh" ]; then
+    echo ""
+    bash "$PROJECT_ROOT/scripts/post-test-hook.sh"
+  fi
+  
   exit 0
 fi

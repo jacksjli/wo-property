@@ -156,7 +156,7 @@ const handleAdd = () => {
   }
   dialogTitle.value = '新增项目'
   editingId.value = null
-  form.value = { name: '', code: '', description: '', status: 'Active' }
+  form.value = { name: '', code: '', description: '', address: '', contactPhone: '', status: 'Active' }
   dialogVisible.value = true
 }
 
@@ -184,41 +184,90 @@ const handleSubmit = async () => {
     await formRef.value.validate()
     submitting.value = true
     
+    const token = localStorage.getItem('token')
+    
     if (editingId.value) {
-      const index = projects.value.findIndex(p => p.id === editingId.value)
-      if (index !== -1) {
-        projects.value[index] = { 
-          ...projects.value[index], 
-          ...form.value,
-          updatedAt: new Date().toLocaleDateString('zh-CN')
+      // 编辑模式 - 调用后端 API
+      const response = await fetch(`http://localhost:5000/api/projects/${editingId.value}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(form.value)
+      })
+      const data = await response.json()
+      if (data.success) {
+        // 更新本地数据
+        const index = projects.value.findIndex(p => p.id === editingId.value)
+        if (index !== -1) {
+          projects.value[index] = { 
+            ...projects.value[index], 
+            ...form.value,
+            updatedAt: new Date().toLocaleDateString('zh-CN')
+          }
+          if (selectedProject.value?.id === editingId.value) {
+            selectedProject.value = projects.value[index]
+          }
         }
-        if (selectedProject.value?.id === editingId.value) {
-          selectedProject.value = projects.value[index]
-        }
+        ElMessage.success('项目更新成功')
+      } else {
+        ElMessage.error(data.message || '更新失败')
       }
-      ElMessage.success('项目更新成功')
     } else {
-      const newId = Math.max(...projects.value.map(p => p.id)) + 1
-      const newProject = {
-        id: newId,
-        ...form.value,
-        modules: allModules.slice(0, 5).map((m: any) => m.name),
-        createdAt: new Date().toLocaleDateString('zh-CN'),
-        updatedAt: new Date().toLocaleDateString('zh-CN')
+      // 新增模式 - 调用后端 API
+      const response = await fetch('http://localhost:5000/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(form.value)
+      })
+      const data = await response.json()
+      if (data.success) {
+        // 刷新项目列表
+        await loadProjects()
+        ElMessage.success(data.message || '项目创建成功，数据库正在初始化中')
+      } else {
+        ElMessage.error(data.message || '创建失败')
       }
-      projects.value.unshift(newProject)
-      selectedProject.value = newProject
-      ElMessage.success('项目创建成功')
     }
     
-    // 保存配置到 localStorage
-    saveProjectsConfig()
-    
     dialogVisible.value = false
-  } catch (error) {
-    // 
+  } catch (error: any) {
+    ElMessage.error('操作失败: ' + (error.message || '网络错误'))
   } finally {
     submitting.value = false
+  }
+}
+
+// 加载项目列表从后端
+const loadProjects = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    const response = await fetch('http://localhost:5000/api/projects', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    const data = await response.json()
+    if (data.success && data.data) {
+      // 转换后端数据为前端格式
+      projects.value = data.data.map((p: any) => ({
+        id: p.id,
+        code: p.code,
+        name: p.name,
+        description: p.description || '',
+        status: p.status === 'active' ? 'Active' : 'Inactive',
+        databaseName: p.databaseName,
+        modules: ['工单管理', '设备管理', '物料管理', '合同管理', '财务管理'],
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt
+      }))
+    }
+  } catch (error) {
+    console.error('加载项目列表失败:', error)
   }
 }
 
@@ -235,17 +284,33 @@ const handleDelete = async () => {
   
   try {
     await ElMessageBox.confirm(
-      `确定要删除项目"${selectedProject.value.name}"吗？此操作不可恢复！`,
-      '删除确认',
+      `确定要删除项目"${selectedProject.value.name}"吗？此操作将同时删除项目的所有数据，不可恢复！`,
+      '危险操作确认',
       { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'error' }
     )
     
-    const index = projects.value.findIndex(p => p.id === selectedProject.value.id)
-    if (index !== -1) {
-      projects.value.splice(index, 1)
+    const token = localStorage.getItem('token')
+    const code = selectedProject.value.code
+    
+    const response = await fetch(`http://localhost:5000/api/projects/${code}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    const data = await response.json()
+    if (data.success) {
+      // 从列表中移除
+      const index = projects.value.findIndex(p => p.id === selectedProject.value.id)
+      if (index !== -1) {
+        projects.value.splice(index, 1)
+      }
+      selectedProject.value = projects.value[0] || null
+      ElMessage.success(data.message || '删除成功')
+    } else {
+      ElMessage.error(data.message || '删除失败')
     }
-    selectedProject.value = projects.value[0] || null
-    ElMessage.success('删除成功')
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')

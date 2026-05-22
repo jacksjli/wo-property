@@ -9,15 +9,22 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using WO.Property.PaymentService.Data;
 using WO.Property.PaymentService.Models;
+using WO.Property.PaymentService.Tenant;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://0.0.0.0:5007");
-builder.Services.AddDbContext<PaymentDbContext>(options =>
+builder.WebHost.UseUrls("http://0.0.0.0:5507");
+// Tenant 支持
+builder.Services.AddSingleton<TenantConfigLoader>();
+builder.Services.AddSingleton<ITenantDbFactory, TenantDbFactory>();
+
+builder.Services.AddDbContext<PaymentDbContext>((sp, options) =>
 {
-    var connectionString = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4";
+    var factory = sp.GetRequiredService<ITenantDbFactory>();
+    var tenantCode = factory.GetCurrentTenantCode() ?? "wo_property";
+    var connStr = factory.GetTenantConnectionString(tenantCode);
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
-    options.UseMySql(new MySqlConnection(connectionString), serverVersion);
+    options.UseMySql(new MySqlConnection(connStr), serverVersion);
 });
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var jwtKey = jwtSettings["SecretKey"] ?? JwtHelper.GetSecretKey();
@@ -48,7 +55,10 @@ builder.Services.AddCors(options => options.AddPolicy("AllowFrontend", policy =>
 var app = builder.Build();
 // EnsureCreated removed - tables already exist in MySQL (2026-05-15)
 app.UseCors("AllowFrontend");
-app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
+app.UseMiddleware<WO.Property.PaymentService.Middleware.TenantRoutingMiddleware>();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "PaymentService", timestamp = DateTime.UtcNow }));
 Console.WriteLine("PaymentService Port: 5007");
 app.Run();

@@ -138,6 +138,7 @@ public class TakeoutOrdersController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "订单不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var updates = new List<string> { "UpdateTime = @updateTime" };
         var parameters = new List<MySqlParameter> { new MySqlParameter("@id", id), new MySqlParameter("@updateTime", DateTime.UtcNow) };

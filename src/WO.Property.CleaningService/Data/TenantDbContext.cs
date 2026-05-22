@@ -47,23 +47,23 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.IsDeleted);
         });
 
-        // cleaning_tasks mapping
+        // cleaning_tasks mapping (实际对应 CleaningRecords 表)
         modelBuilder.Entity<CleaningTask>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.ToTable("cleaning_tasks");
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.StaffId).HasColumnName("staff_id");
-            entity.Property(e => e.Location).HasColumnName("location");
-            entity.Property(e => e.Content).HasColumnName("content");
-            entity.Property(e => e.PlanDate).HasColumnName("plan_date");
-            entity.Property(e => e.Status).HasColumnName("status");
-            entity.Property(e => e.CheckInTime).HasColumnName("check_in_time");
-            entity.Property(e => e.CheckInPhoto).HasColumnName("check_in_photo");
-            entity.Property(e => e.Remark).HasColumnName("remark");
-            entity.Property(e => e.ProjectId).HasColumnName("project_id");
-            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.ToTable("CleaningRecords");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.BuildingId).HasColumnName("BuildingId");
+            entity.Property(e => e.CleaningArea).HasColumnName("CleaningArea").HasMaxLength(100);
+            entity.Property(e => e.CleanerName).HasColumnName("CleanerName").HasMaxLength(50);
+            entity.Property(e => e.CleaningType).HasColumnName("CleaningType").HasMaxLength(20);
+            entity.Property(e => e.PlanDate).HasColumnName("PlanDate");
+            entity.Property(e => e.ActualDate).HasColumnName("ActualDate");
+            entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20).HasConversion<string>();
+            entity.Property(e => e.QualityLevel).HasColumnName("QualityLevel").HasMaxLength(10);
+            entity.Property(e => e.Remarks).HasColumnName("Remarks");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.CreatedBy);
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);

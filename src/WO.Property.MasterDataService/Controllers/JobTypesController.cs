@@ -21,85 +21,95 @@ public class JobTypesController : ControllerBase
             _db.Open();
     }
 
+    /// <summary>
+    /// 获取所有工种（或按ticket_type_id/departmentId筛选）
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? status = null)
+    public async Task<IActionResult> GetAll([FromQuery] int? ticketTypeId = null, [FromQuery] int? departmentId = null, [FromQuery] string? status = null)
     {
-        var where = string.IsNullOrEmpty(status) ? "" : "WHERE Status = @status";
-        var countSql = $"SELECT COUNT(*) FROM JobTypes {where}";
-        using var countCmd = new MySqlCommand(countSql, _db);
-        if (!string.IsNullOrEmpty(status)) countCmd.Parameters.AddWithValue("@status", status);
-        var total = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+        var conditions = new List<string>();
+        if (ticketTypeId.HasValue) conditions.Add("ticket_type_id = @ticketTypeId");
+        if (departmentId.HasValue) conditions.Add("department_id = @departmentId");
+        if (!string.IsNullOrEmpty(status)) conditions.Add("Status = @status");
+        var where = conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
 
-        var dataSql = $"SELECT * FROM JobTypes {where} ORDER BY SortOrder, Id LIMIT @offset, @pageSize";
-        using var dataCmd = new MySqlCommand(dataSql, _db);
-        if (!string.IsNullOrEmpty(status)) dataCmd.Parameters.AddWithValue("@status", status);
-        dataCmd.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
-        dataCmd.Parameters.AddWithValue("@pageSize", pageSize);
+        var sql = $"SELECT * FROM JobTypes {where} ORDER BY SortOrder, Id";
+        var cmd = new MySqlCommand(sql, _db);
+        if (ticketTypeId.HasValue) cmd.Parameters.AddWithValue("@ticketTypeId", ticketTypeId.Value);
+        if (departmentId.HasValue) cmd.Parameters.AddWithValue("@departmentId", departmentId.Value);
+        if (!string.IsNullOrEmpty(status)) cmd.Parameters.AddWithValue("@status", status);
 
         var items = new List<JobTypeItem>();
-        using var reader = await dataCmd.ExecuteReaderAsync();
+        var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             items.Add(MapJobType(reader));
+        await reader.CloseAsync();
 
-        return Ok(new
-        {
-            success = true,
-            data = items,
-            pagination = new { page, pageSize, totalCount = total, totalPages = (int)Math.Ceiling(total / (double)pageSize) }
-        });
+        return Ok(new { success = true, data = items });
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
-        using var cmd = new MySqlCommand("SELECT * FROM JobTypes WHERE Id = @id", _db);
+        var cmd = new MySqlCommand("SELECT * FROM JobTypes WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
-        using var reader = await cmd.ExecuteReaderAsync();
+        var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
-            return Ok(new { success = true, data = MapJobType(reader) });
+        {
+            var item = MapJobType(reader);
+            await reader.CloseAsync();
+            return Ok(new { success = true, data = item });
+        }
+        await reader.CloseAsync();
         return NotFound(new { success = false, message = "工种类型不存在" });
     }
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] JobTypeItem req)
     {
-        using var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM JobTypes WHERE Code = @code", _db);
+        var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM JobTypes WHERE Code = @code", _db);
         checkCmd.Parameters.AddWithValue("@code", req.Code);
         if (Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0)
-            return BadRequest(new { success = false, message = $"工种编号 '{req.Code}' 已存在" });
+            return Ok(new { success = false, message = $"工种编号 '{req.Code}' 已存在" });
 
-        var sql = @"INSERT INTO JobTypes (Name, Code, Description, Category, Status)
-                    VALUES (@Name, @Code, @Description, @Category, @Status);
+        var sql = @"INSERT INTO JobTypes (Name, Code, Description, Category, ticket_type_id, department_id, Status, SortOrder)
+                    VALUES (@Name, @Code, @Description, @Category, @ticketTypeId, @departmentId, @Status, @SortOrder);
                     SELECT LAST_INSERT_ID();";
-        using var cmd = new MySqlCommand(sql, _db);
+        var cmd = new MySqlCommand(sql, _db);
         cmd.Parameters.AddWithValue("@Name", req.Name);
         cmd.Parameters.AddWithValue("@Code", req.Code);
         cmd.Parameters.AddWithValue("@Description", (object)req.Description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Category", (object)req.Category ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@ticketTypeId", req.ticket_type_id > 0 ? req.ticket_type_id : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@departmentId", req.department_id > 0 ? req.department_id : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@Status", req.Status ?? "Active");
+        cmd.Parameters.AddWithValue("@SortOrder", req.SortOrder);
         var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
         _logger.LogInformation("创建工种类型: {Code} ({Name})", req.Code, req.Name);
-        return CreatedAtAction(nameof(GetById), new { id }, new { success = true, message = "工种类型创建成功", data = new { id } });
+        return Ok(new { success = true, message = "工种类型创建成功", data = new { id } });
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] JobTypeItem req)
     {
-        using var checkCmd = new MySqlCommand("SELECT * FROM JobTypes WHERE Id = @id", _db);
+        var checkCmd = new MySqlCommand("SELECT * FROM JobTypes WHERE Id = @id", _db);
         checkCmd.Parameters.AddWithValue("@id", id);
-        using var reader = await checkCmd.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
-            return NotFound(new { success = false, message = "工种类型不存在" });
+        var reader = await checkCmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) { await reader.CloseAsync(); return Ok(new { success = false, message = "工种类型不存在" }); }
+        await reader.CloseAsync();
 
-        var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Category = @category", "Status = @status", "UpdatedAt = @updatedAt" };
-        using var cmd = new MySqlCommand($"UPDATE JobTypes SET {string.Join(", ", updates)} WHERE Id = @id", _db);
+        var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Category = @category", "ticket_type_id = @ticketTypeId", "department_id = @departmentId", "Status = @status", "SortOrder = @sortOrder", "UpdatedAt = @updatedAt" };
+        var cmd = new MySqlCommand($"UPDATE JobTypes SET {string.Join(", ", updates)} WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@name", req.Name);
         cmd.Parameters.AddWithValue("@code", req.Code);
         cmd.Parameters.AddWithValue("@description", (object)req.Description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@category", (object)req.Category ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@ticketTypeId", req.ticket_type_id > 0 ? req.ticket_type_id : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@departmentId", req.department_id > 0 ? req.department_id : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@status", req.Status ?? "Active");
+        cmd.Parameters.AddWithValue("@sortOrder", req.SortOrder);
         cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
         await cmd.ExecuteNonQueryAsync();
 
@@ -110,26 +120,34 @@ public class JobTypesController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        using var cmd = new MySqlCommand("DELETE FROM JobTypes WHERE Id = @id", _db);
+        var cmd = new MySqlCommand("DELETE FROM JobTypes WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         var affected = await cmd.ExecuteNonQueryAsync();
         if (affected == 0)
-            return NotFound(new { success = false, message = "工种类型不存在" });
+            return Ok(new { success = false, message = "工种类型不存在" });
         _logger.LogInformation("删除工种类型: {Id}", id);
         return Ok(new { success = true, message = "工种类型已删除" });
     }
 
-    private static JobTypeItem MapJobType(MySqlDataReader r) => new()
+    private static JobTypeItem MapJobType(MySqlDataReader r)
     {
-        Id = Convert.ToInt32(r["Id"]),
-        Name = r["Name"].ToString() ?? "",
-        Code = r["Code"].ToString() ?? "",
-        Description = r["Description"] as string,
-        Category = r["Category"] as string,
-        Status = r["Status"].ToString() ?? "Active",
-        CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
-        UpdatedAt = r["UpdatedAt"] == DBNull.Value ? null : Convert.ToDateTime(r["UpdatedAt"])
-    };
+        int? tid = r["ticket_type_id"] == DBNull.Value ? null : Convert.ToInt32(r["ticket_type_id"]);
+        int? did = r["department_id"] == DBNull.Value ? null : Convert.ToInt32(r["department_id"]);
+        return new JobTypeItem
+        {
+            Id = Convert.ToInt32(r["Id"]),
+            Name = r["Name"].ToString() ?? "",
+            Code = r["Code"].ToString() ?? "",
+            Description = r["Description"] as string,
+            Category = r["Category"] as string,
+            ticket_type_id = tid ?? 0,
+            department_id = did ?? 0,
+            Status = r["Status"].ToString() ?? "Active",
+            SortOrder = r["SortOrder"] == DBNull.Value ? 0 : Convert.ToInt32(r["SortOrder"]),
+            CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
+            UpdatedAt = r["UpdatedAt"] == DBNull.Value ? null : Convert.ToDateTime(r["UpdatedAt"])
+        };
+    }
 }
 
 public class JobTypeItem
@@ -139,7 +157,10 @@ public class JobTypeItem
     public string Code { get; set; } = "";
     public string? Description { get; set; }
     public string? Category { get; set; }
+    public int ticket_type_id { get; set; }
+    public int department_id { get; set; }
     public string Status { get; set; } = "Active";
+    public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

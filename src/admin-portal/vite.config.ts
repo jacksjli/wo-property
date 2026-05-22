@@ -23,7 +23,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      'vue': 'vue/dist/vue.esm-bundler.js'
     },
   },
   build: {
@@ -34,6 +35,7 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             if (id.includes('element-plus')) return 'element-plus'
             if (id.includes('echarts') || id.includes('vue-echarts')) return 'echarts'
+            if (id.includes('vue/dist') || id.includes('vue-esm')) return 'vue-runtime'
             if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) return 'vue-vendor'
             if (id.includes('axios')) return 'axios'
             return 'vendor'
@@ -52,9 +54,10 @@ export default defineConfig({
   base: '/',
   server: {
     proxy: {
-      '/api': {
+      '/project/api': {
         target: 'http://localhost:5000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/project\/api/, '/api'),
       },
     },
   },

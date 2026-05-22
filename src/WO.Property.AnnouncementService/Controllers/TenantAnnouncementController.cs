@@ -117,7 +117,7 @@ public class TenantAnnouncementController : ControllerBase
                 Category = request.Type ?? "通知",
                 Level = request.Priority ?? "Normal",
                 Status = request.Status ?? "published",
-                IsPinned = request.IsTop ?? false,
+                IsPinned = request.IsPinned ?? false,
                 Publisher = request.Publisher ?? "物业中心",
                 StartTime = request.StartDate ?? DateTime.UtcNow,
                 EndTime = request.EndDate,
@@ -184,6 +184,160 @@ public class TenantAnnouncementController : ControllerBase
             return Ok(new { success = false, message = ex.Message });
         }
     }
+
+    // ==================== 报表 API ====================
+    [HttpGet("reports/device")]
+    public async Task<IActionResult> GetDeviceReports([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.DeviceReports.AsQueryable();
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetDeviceReports failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpGet("reports/ticket")]
+    public async Task<IActionResult> GetTicketReports([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.TicketReports.AsQueryable();
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetTicketReports failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpGet("reports/material")]
+    public async Task<IActionResult> GetMaterialReports([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.MaterialReports.AsQueryable();
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetMaterialReports failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpGet("reports/satisfaction")]
+    public async Task<IActionResult> GetSatisfactionSurveys([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.SatisfactionSurveys.AsQueryable();
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(r => r.SubmittedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetSatisfactionSurveys failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ==================== 采购订单 API ====================
+    [HttpGet("purchase-orders")]
+    public async Task<IActionResult> GetPurchaseOrders([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.PurchaseOrders.Where(p => p.IsDeleted != true).AsQueryable();
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(p => p.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPurchaseOrders failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ==================== 库存事务 API ====================
+    [HttpGet("stock-transactions")]
+    public async Task<IActionResult> GetStockTransactions([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? materialId = null)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.StockTransactions.Where(s => s.IsDeleted != true).AsQueryable();
+            if (materialId.HasValue)
+                query = query.Where(s => s.MaterialId == materialId.Value);
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(s => s.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetStockTransactions failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ==================== 枚举定义 API ====================
+    [HttpGet("enum-definitions")]
+    public async Task<IActionResult> GetEnumDefinitions([FromQuery] string? category = null)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.EnumDefinitions.AsQueryable();
+            if (!string.IsNullOrEmpty(category))
+                query = query.Where(e => e.Category == category);
+            var items = await query.OrderBy(e => e.SortOrder).ToListAsync();
+            return Ok(new { success = true, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetEnumDefinitions failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ==================== 综合报表 API ====================
+    [HttpGet("general-reports")]
+    public async Task<IActionResult> GetGeneralReports([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? type = null)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var query = db.GeneralReports.AsQueryable();
+            if (!string.IsNullOrEmpty(type))
+                query = query.Where(r => r.Type == type);
+            var total = await query.CountAsync();
+            var items = await query.OrderByDescending(r => r.GeneratedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new { success = true, total, page, pageSize, data = items });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetGeneralReports failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
 }
 
 public class TenantCreateAnnouncementRequest
@@ -193,7 +347,7 @@ public class TenantCreateAnnouncementRequest
     public string? Type { get; set; }
     public string? Priority { get; set; }
     public string? Status { get; set; }
-    public bool? IsTop { get; set; }
+    public bool? IsPinned { get; set; }
     public string? Publisher { get; set; }
     public int ProjectId { get; set; }
     public DateTime? StartDate { get; set; }

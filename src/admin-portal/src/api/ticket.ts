@@ -1,17 +1,19 @@
 import { ticketApi } from './http'
 
-// API 端点
+// API 端点（匹配后端 TenantTicketController）
 const ENDPOINTS = {
-  TICKETS: '/api/tickets',
-  TICKET: (id: number) => `/api/tickets/${id}`,
-  OPTIONS: '/api/tickets/options',
-  DISPATCH: (id: number) => `/api/tickets/${id}/dispatch`,
-  ACCEPT: (id: number) => `/api/tickets/${id}/accept`,
-  REJECT: (id: number) => `/api/tickets/${id}/reject`,
-  PROGRESS: (id: number) => `/api/tickets/${id}/progress`,
-  FINISH: (id: number) => `/api/tickets/${id}/finish`,
-  CONFIRM: (id: number) => `/api/tickets/${id}/confirm`,
-  RATE: (id: number) => `/api/tickets/${id}/rate`,
+  TICKETS: '/api/tenant/tickets',
+  TICKET: (id: number) => `/api/tenant/tickets/${id}`,
+  OVERDUE: '/api/tenant/tickets/overdue',
+  OPTIONS: '/api/tenant/tickets/options',
+  DISPATCH: (id: number) => `/api/tenant/tickets/${id}/dispatch`,
+  ACCEPT: (id: number) => `/api/tenant/tickets/${id}/accept`,
+  REJECT: (id: number) => `/api/tenant/tickets/${id}/reject`,
+  REASSIGN: (id: number) => `/api/tenant/tickets/${id}/reassign`,
+  PROGRESS: (id: number) => `/api/tenant/tickets/${id}/progress`,
+  FINISH: (id: number) => `/api/tenant/tickets/${id}/finish`,
+  CONFIRM: (id: number) => `/api/tenant/tickets/${id}/confirm`,
+  RATE: (id: number) => `/api/tenant/tickets/${id}/rate`,
 }
 
 // 获取工单列表
@@ -22,6 +24,9 @@ export const getTickets = async (params?: {
   page?: number;
   pageSize?: number;
   keyword?: string;
+  areaId?: number;
+  buildingId?: number;
+  roomId?: number;
 }) => {
   const response = await ticketApi.get(ENDPOINTS.TICKETS, { params });
   return response;
@@ -33,14 +38,25 @@ export const getTicket = async (id: number) => {
   return response;
 };
 
+// 获取 Overdue 工单列表
+export const getOverdueTickets = async () => {
+  const response = await ticketApi.get(ENDPOINTS.OVERDUE);
+  return response;
+};
+
 // 创建工单
 export const createTicket = async (ticketData: {
   title: string;
   description?: string;
   priority: string;
+  ticketTypeId?: number;
   category?: string;
   contactPhone?: string;
   address?: string;
+  areaId?: number;
+  buildingId?: number;
+  roomId?: number;
+  projectId?: number;
 }) => {
   const response = await ticketApi.post(ENDPOINTS.TICKETS, ticketData);
   return response;
@@ -51,11 +67,9 @@ export const saveTicket = async (id: number, ticketData: {
   title?: string;
   description?: string;
   priority?: string;
-  category?: string;
-  contactPhone?: string;
-  address?: string;
+  status?: string;
 }) => {
-  const response = await ticketApi.post(ENDPOINTS.TICKET(id), ticketData);
+  const response = await ticketApi.put(ENDPOINTS.TICKET(id), ticketData);
   return response;
 };
 
@@ -82,7 +96,16 @@ export const acceptTicket = async (id: number) => {
 
 // 拒单
 export const rejectTicket = async (id: number, reason: string) => {
-  const response = await ticketApi.post(ENDPOINTS.REJECT(id), { reason });
+  const response = await ticketApi.put(ENDPOINTS.REJECT(id), { reason });
+  return response;
+};
+
+// 重新指派
+export const reassignTicket = async (id: number, personId: number, reason?: string) => {
+  const response = await ticketApi.put(ENDPOINTS.REASSIGN(id), {
+    personId,
+    reason
+  });
   return response;
 };
 
@@ -113,12 +136,14 @@ export const rateTicket = async (id: number, rating: number, comment?: string) =
 export default {
   getTickets,
   getTicket,
+  getOverdueTickets,
   createTicket,
   saveTicket,
   getTicketOptions,
   dispatchTicket,
   acceptTicket,
   rejectTicket,
+  reassignTicket,
   progressTicket,
   finishTicket,
   confirmTicket,

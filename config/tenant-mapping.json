@@ -1,0 +1,21 @@
+{
+  "project": "wo-property-multi-project",
+  "version": "2.0",
+  "databaseMode": "multi",
+  "centerDatabase": "project_center",
+  "database": {
+    "type": "mysql",
+    "server": "127.0.0.1",
+    "port": 3306,
+    "username": "root",
+    "password": "",
+    "charset": "utf8mb4"
+  },
+  "tenants": {
+    "wo_property": {
+      "displayName": "原始数据库",
+      "databaseName": "wo_property",
+      "status": "active"
+    }
+  }
+}

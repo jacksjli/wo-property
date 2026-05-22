@@ -182,11 +182,25 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    const payload = {
+      ResidentId: form.value.residentId,
+      RoomId: form.value.roomId,
+      PaymentType: form.value.paymentType,
+      Amount: form.value.amount,
+      PeriodStart: form.value.periodStart || null,
+      PeriodEnd: form.value.periodEnd || null,
+      DueDate: form.value.dueDate || null,
+      PaidDate: null,
+      Status: 'unpaid',
+      PaymentMethod: null,
+      TransactionId: null,
+      Remarks: form.value.remarks || null,
+    }
     if (editingId.value) {
-      await masterApi.put(`/payment-records/${editingId.value}`, form.value)
+      await masterApi.put(`/payment-records/${editingId.value}`, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/payment-records', form.value)
+      await masterApi.post('/payment-records', payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

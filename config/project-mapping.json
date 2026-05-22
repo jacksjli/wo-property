@@ -1,0 +1,36 @@
+{
+  "project": "wo-property-center",
+  "version": "2.0",
+  "database": {
+    "type": "mysql",
+    "server": "127.0.0.1",
+    "port": 3306,
+    "username": "root",
+    "password": "",
+    "charset": "utf8mb4"
+  },
+  "centerDatabase": "project_center",
+  "projects": {
+    "jinxiu": {
+      "displayName": "锦绣花园",
+      "databaseName": "project_jinxiu",
+      "status": "active",
+      "config": {
+        "timezone": "Asia/Shanghai",
+        "currency": "CNY"
+      }
+    },
+    "yangguang": {
+      "displayName": "阳光小区",
+      "databaseName": "project_yangguang",
+      "status": "active",
+      "config": {}
+    },
+    "xingfuli": {
+      "displayName": "幸福里",
+      "databaseName": "project_xingfuli",
+      "status": "active",
+      "config": {}
+    }
+  }
+}

@@ -93,6 +93,7 @@ public class SuppliersController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "供应商不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var updates = new List<string> { "Name = @name", "Code = @code", "ContactPerson = @contactPerson", "ContactPhone = @contactPhone", "Address = @address", "Type = @type", "Status = @status", "UpdatedAt = @updatedAt" };
         using var cmd = new MySqlCommand($"UPDATE Suppliers SET {string.Join(", ", updates)} WHERE Id = @id", _db);

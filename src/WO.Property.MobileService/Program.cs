@@ -10,12 +10,21 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.MobileService.Data;
 using WO.Property.MobileService.Models;
+using WO.Property.MobileService.Tenant;
+using WO.Property.MobileService.Middleware;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 配置端口 - 使用5015端口
-builder.WebHost.UseUrls("http://0.0.0.0:5014");
+// 配置端口 - 使用5526端口（5014被StatisticsService占用）
+builder.WebHost.UseUrls("http://0.0.0.0:5526");
+
+// 添加连接字符串配置
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4",
+    ["ConnectionStrings:TenantDb"] = "Server=127.0.0.1;Port=3306;Database={db_name};User=root;Password=;CharSet=utf8mb4"
+});
 
 // 添加数据库
 builder.Services.AddDbContext<MobileDbContext>(options =>
@@ -24,6 +33,11 @@ builder.Services.AddDbContext<MobileDbContext>(options =>
     var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
     options.UseMySql(new MySqlConnection(connectionString), serverVersion);
 });
+
+// 注册租户组件
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<ITenantDbFactory, TenantDbContextFactory>();
+builder.Services.AddScoped<IDbContextFactory<TenantDbContext>, TenantDbContextFactory>();
 
 // JWT 配置
 var jwtIssuer = "wo-property-unified-auth";
@@ -60,6 +74,9 @@ var app = builder.Build();
 
 // 数据库初始化
 
+// 使用租户路由中间件
+app.UseMiddleware<TenantRoutingMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -70,7 +87,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "Mobi
 
 Console.WriteLine("===========================================");
 Console.WriteLine("  WO Property Mobile Service");
-Console.WriteLine("  Port: 5015");
+Console.WriteLine("  Port: 5526 (Multi-Tenant)");
 Console.WriteLine("===========================================");
 
 app.Run();

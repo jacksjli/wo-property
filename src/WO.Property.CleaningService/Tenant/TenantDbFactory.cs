@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 
 namespace WO.Property.CleaningService.Tenant;
 
@@ -35,13 +36,17 @@ public class TenantDbFactory : ITenantDbFactory
         var baseConnStr = _configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Default connection string not configured");
 
-        var result = System.Text.RegularExpressions.Regex.Replace(
+        // wo_property 项目直接使用 wo_property 数据库（历史遗留）
+        // 其他项目使用 project_{project_code} 命名规范
+        var databaseName = tenantCode == "wo_property" ? "wo_property" : $"project_{tenantCode}";
+
+        var result = Regex.Replace(
             baseConnStr,
             @"Database\s*=\s*[^;]+",
-            $"Database={tenantCode}",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            $"Database={databaseName}",
+            RegexOptions.IgnoreCase);
 
-        _logger.LogDebug("Generated connection string for tenant {TenantCode}", tenantCode);
+        _logger.LogDebug("Generated connection string for tenant {TenantCode} -> database {Database}", tenantCode, databaseName);
         return result;
     }
 }

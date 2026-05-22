@@ -5,7 +5,9 @@ namespace WO.Property.AnnouncementService.Middleware;
 
 /// <summary>
 /// 租户路由中间件
-/// 从 JWT 提取 tenant_code → 注入 TenantDbFactory
+/// 支持两种方式获取租户代码：
+/// 1. JWT claims 中的 tenant_code
+/// 2. X-Project header
 /// </summary>
 public class TenantRoutingMiddleware
 {
@@ -22,7 +24,6 @@ public class TenantRoutingMiddleware
     {
         var path = context.Request.Path.Value?.ToLower() ?? "";
         
-
         // 跳过匿名接口
         if (IsAnonymousEndpoint(path))
         {
@@ -30,19 +31,11 @@ public class TenantRoutingMiddleware
             return;
         }
 
-        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
-        {
-            await _next(context);
-            return;
-        }
-
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        var tenantCode = ExtractTenantCodeFromJwt(token);
+        var tenantCode = ExtractTenantCode(context);
 
         if (string.IsNullOrEmpty(tenantCode))
         {
-                _logger.LogWarning("JWT does not contain tenant_code claim");
+            _logger.LogWarning("Cannot determine tenant code from JWT or X-Project header");
             context.Response.StatusCode = 401;
             await context.Response.WriteAsJsonAsync(new
             {
@@ -54,7 +47,6 @@ public class TenantRoutingMiddleware
 
         tenantDbFactory.SetCurrentTenantCode(tenantCode);
         
-
         try
         {
             await _next(context);
@@ -63,6 +55,42 @@ public class TenantRoutingMiddleware
         {
             tenantDbFactory.Clear();
         }
+    }
+
+    private string? ExtractTenantCode(HttpContext context)
+    {
+        // 方式1: 优先从 X-Project header 获取 (Phase 1 单租户多项目)
+        var xProject = context.Request.Headers["X-Project"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(xProject))
+        {
+            _logger.LogDebug("Project routing via X-Project header: {ProjectCode}", xProject);
+            return xProject;
+        }
+
+        // 方式2: 从 JWT claims 获取 tenant_code
+        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+        {
+            var token = authHeader.Substring("Bearer ".Length).Trim();
+            var tenantCode = ExtractTenantCodeFromJwt(token);
+            if (!string.IsNullOrEmpty(tenantCode))
+            {
+                return tenantCode;
+            }
+        }
+
+        // 方式3: 从 JWT claims 获取 project_code (某些服务的命名)
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+        {
+            var token = authHeader.Substring("Bearer ".Length).Trim();
+            var projectCode = ExtractProjectCodeFromJwt(token);
+            if (!string.IsNullOrEmpty(projectCode))
+            {
+                return projectCode;
+            }
+        }
+
+        return null;
     }
 
     private string? ExtractTenantCodeFromJwt(string token)
@@ -75,7 +103,22 @@ public class TenantRoutingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse JWT token");
+            _logger.LogError(ex, "Failed to parse JWT token for tenant_code");
+            return null;
+        }
+    }
+
+    private string? ExtractProjectCodeFromJwt(string token)
+    {
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(token);
+            return jwtToken.Claims.FirstOrDefault(c => c.Type == "project_code")?.Value;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse JWT token for project_code");
             return null;
         }
     }

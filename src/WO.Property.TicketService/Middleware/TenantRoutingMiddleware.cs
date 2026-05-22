@@ -36,8 +36,13 @@ public class TenantRoutingMiddleware
             return;
         }
 
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        var tenantCode = ExtractTenantCodeFromJwt(token);
+        // 优先使用 X-Project header（前端传递），其次 JWT 中的 project_code
+        var tenantCode = context.Request.Headers["X-Project"].FirstOrDefault();
+        if (string.IsNullOrEmpty(tenantCode))
+        {
+            var token = authHeader.Substring("Bearer ".Length).Trim();
+            tenantCode = ExtractTenantCodeFromJwt(token);
+        }
 
         if (string.IsNullOrEmpty(tenantCode))
         {
@@ -70,7 +75,9 @@ public class TenantRoutingMiddleware
         {
             var handler = new JwtSecurityTokenHandler();
             var jwtToken = handler.ReadJwtToken(token);
-            return jwtToken.Claims.FirstOrDefault(c => c.Type == "tenant_code")?.Value;
+            // 优先检查 project_code（Phase 1+），兼容 tenant_code（Phase 0）
+            return jwtToken.Claims.FirstOrDefault(c => c.Type == "project_code")?.Value
+                ?? jwtToken.Claims.FirstOrDefault(c => c.Type == "tenant_code")?.Value;
         }
         catch (Exception ex)
         {

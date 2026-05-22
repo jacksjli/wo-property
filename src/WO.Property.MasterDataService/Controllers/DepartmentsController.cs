@@ -88,6 +88,7 @@ public class DepartmentsController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "部门不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "SortOrder = @sortOrder" };
         using var cmd = new MySqlCommand($"UPDATE Departments SET {string.Join(", ", updates)} WHERE Id = @id", _db);

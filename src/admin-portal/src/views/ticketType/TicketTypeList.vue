@@ -37,6 +37,8 @@ const form = ref({
   color: '#409EFF'
 })
 
+const submitting = ref(false)
+
 const colorOptions = [
   { value: '#409EFF', label: '蓝色' },
   { value: '#67C23A', label: '绿色' },
@@ -73,34 +75,28 @@ const handleEdit = (row: TicketType) => {
   dialogVisible.value = true
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (!form.value.name.trim()) {
     ElMessage.warning('请输入类型名称')
     return
   }
-
-  // 检查名称是否重复
-  const exists = ticketTypeExists(form.value.name)
-  if (editingId.value) {
-    // 编辑时检查是否与其他类型重名
-    const current = typeList.value.find(t => t.id === editingId.value)
-    if (exists && current?.name !== form.value.name) {
-      ElMessage.warning('该类型名称已存在')
-      return
+  try {
+    submitting.value = true
+    if (editingId.value) {
+      await updateTicketType(editingId.value, { ...form.value })
+      ElMessage.success('更新成功')
+    } else {
+      await addTicketType({ ...form.value, status: 'Active' })
+      ElMessage.success('添加成功')
     }
-    updateTicketType(editingId.value, { ...form.value })
-    ElMessage.success('更新成功')
-  } else {
-    if (exists) {
-      ElMessage.warning('该类型名称已存在')
-      return
-    }
-    addTicketType({ ...form.value, status: 'Active' })
-    ElMessage.success('添加成功')
+    await fetchFromApi()
+    typeList.value = getAllTicketTypes()
+    dialogVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
+  } finally {
+    submitting.value = false
   }
-
-  typeList.value = getAllTicketTypes()
-  dialogVisible.value = false
 }
 
 const handleDelete = async (row: TicketType) => {
@@ -110,11 +106,14 @@ const handleDelete = async (row: TicketType) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    deleteTicketType(row.id)
+    await deleteTicketType(row.id)
+    await fetchFromApi()
     typeList.value = getAllTicketTypes()
     ElMessage.success('删除成功')
-  } catch {
-    // 取消
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '删除失败')
+    }
   }
 }
 
@@ -133,10 +132,15 @@ const handleReset = async () => {
   }
 }
 
-const handleToggle = (row: TicketType) => {
-  toggleTicketTypeStatus(row.id)
-  typeList.value = getAllTicketTypes()
-  ElMessage.success(`已将 "${row.name}" 设为${row.status === 'Active' ? '启用' : '停用'}`)
+const handleToggle = async (row: TicketType) => {
+  try {
+    await toggleTicketTypeStatus(row.id)
+    await fetchFromApi()
+    typeList.value = getAllTicketTypes()
+    ElMessage.success(`已将 "${row.name}" 设为${row.status === 'Active' ? '停用' : '启用'}`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '操作失败')
+  }
 }
 </script>
 

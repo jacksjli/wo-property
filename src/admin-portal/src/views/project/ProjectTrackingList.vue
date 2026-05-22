@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Refresh, Search, Document, Clock, Check, Warning } from '@element-plus/icons-vue'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import {
-  getAllProjects,
+  projects,
+  loadProjectsFromApi,
   addProject,
   updateProject,
   deleteProject,
@@ -38,9 +39,13 @@ const refreshFields = () => {
   refreshKey.value++
 }
 
-// 数据
-const projects = ref<TrackingProject[]>(getAllProjects())
+// 数据（直接从 store）
 const stats = computed(() => getStats())
+
+// 挂载时加载数据
+onMounted(async () => {
+  await loadProjectsFromApi()
+})
 
 // 搜索表单
 const searchForm = ref({
@@ -165,15 +170,15 @@ const handleEdit = (project: TrackingProject) => {
 }
 
 // 保存项目
-const handleSave = () => {
+const handleSave = async () => {
   if (editingProject.value) {
-    updateProject(editingProject.value.id, formData.value)
+    await updateProject(editingProject.value.id, formData.value)
     ElMessage.success('项目信息更新成功')
   } else {
-    addProject(formData.value)
+    await addProject(formData.value)
     ElMessage.success('项目新增成功')
   }
-  projects.value = getAllProjects()
+  await loadProjectsFromApi()
   dialogVisible.value = false
 }
 
@@ -187,9 +192,9 @@ const handleDelete = (project: TrackingProject) => {
       cancelButtonText: '取消',
       type: 'warning'
     }
-  ).then(() => {
-    deleteProject(project.id)
-    projects.value = getAllProjects()
+  ).then(async () => {
+    await deleteProject(project.id)
+    await loadProjectsFromApi()
     ElMessage.success('项目已删除')
   }).catch(() => {})
 }

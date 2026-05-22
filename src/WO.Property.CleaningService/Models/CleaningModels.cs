@@ -24,28 +24,29 @@ public class CleaningStaff : BaseEntity
 
 public class CleaningTask : BaseEntity
 {
-    public int StaffId { get; set; }
+    public int BuildingId { get; set; }
 
     [MaxLength(100)]
-    public string Location { get; set; } = string.Empty;
+    public string CleaningArea { get; set; } = string.Empty;
 
-    [MaxLength(500)]
-    public string Content { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string? CleanerName { get; set; }
 
-    public DateTime PlanDate { get; set; }
+    [MaxLength(20)]
+    public string? CleaningType { get; set; }
+
+    public DateTime? PlanDate { get; set; }
+
+    public DateTime? ActualDate { get; set; }
 
     [MaxLength(20)]
     public string Status { get; set; } = "pending";
 
-    public DateTime? CheckInTime { get; set; }
-
-    [MaxLength(200)]
-    public string? CheckInPhoto { get; set; }
+    [MaxLength(10)]
+    public string? QualityLevel { get; set; }
 
     [MaxLength(500)]
-    public string? Remark { get; set; }
-
-    public int ProjectId { get; set; } = 1;
+    public string? Remarks { get; set; }
 }
 
 public class CleaningRecord : BaseEntity

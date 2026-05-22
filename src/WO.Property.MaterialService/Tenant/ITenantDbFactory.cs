@@ -8,4 +8,5 @@ public interface ITenantDbFactory
     string? GetCurrentTenantCode();
     void SetCurrentTenantCode(string tenantCode);
     void Clear();
+    string GetTenantConnectionString(string tenantCode);
 }

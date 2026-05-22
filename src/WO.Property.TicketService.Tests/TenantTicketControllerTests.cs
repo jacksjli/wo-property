@@ -3,6 +3,7 @@ using Moq;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using WO.Property.TicketService.Controllers;
@@ -17,9 +18,11 @@ public class TenantTicketControllerTests
 {
     private TenantDbFactory CreateTenantDbFactory()
     {
-        var config = new ConfigurationBuilder().Build();
+        var mockEnv = new Mock<IWebHostEnvironment>();
+        mockEnv.Setup(e => e.ContentRootPath).Returns("/Users/mac/Projects/WO-Property-Management/src/WO.Property.TicketService");
+        var configLoader = new TenantConfigLoader(mockEnv.Object);
         var logger = new Mock<ILogger<TenantDbFactory>>().Object;
-        return new TenantDbFactory(config, logger);
+        return new TenantDbFactory(configLoader, logger);
     }
 
     private string CreateTestJwtToken(string tenantCode = "tenant_a", int userId = 1)

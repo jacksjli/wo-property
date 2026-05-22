@@ -24,31 +24,31 @@ public class TenantDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.ToTable("notifications");
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-            entity.Property(e => e.Title).HasColumnName("title");
-            entity.Property(e => e.Content).HasColumnName("content");
-            entity.Property(e => e.Type).HasColumnName("type");
-            entity.Property(e => e.Priority).HasColumnName("priority");
-            entity.Property(e => e.IsRead).HasColumnName("is_read");
-            entity.Property(e => e.ReadAt).HasColumnName("read_at");
-            entity.Property(e => e.RelatedEntityType).HasColumnName("related_entity_type");
-            entity.Property(e => e.RelatedEntityId).HasColumnName("related_entity_id");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.UserId).HasColumnName("UserId");
+            entity.Property(e => e.Title).HasColumnName("Title");
+            entity.Property(e => e.Content).HasColumnName("Content");
+            entity.Property(e => e.Type).HasColumnName("Type");
+            entity.Property(e => e.Priority).HasColumnName("Priority");
+            entity.Property(e => e.IsRead).HasColumnName("IsRead");
+            entity.Property(e => e.ReadAt).HasColumnName("ReadAt");
+            entity.Property(e => e.RelatedEntityType).HasColumnName("RelatedEntityType");
+            entity.Property(e => e.RelatedEntityId).HasColumnName("RelatedEntityId");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
         });
 
         modelBuilder.Entity<MessageTemplate>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.ToTable("message_templates");
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.Name).HasColumnName("name");
-            entity.Property(e => e.Type).HasColumnName("type");
-            entity.Property(e => e.Subject).HasColumnName("subject");
-            entity.Property(e => e.Content).HasColumnName("content");
-            entity.Property(e => e.Variables).HasColumnName("variables");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
-            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.ToTable("MessageTemplates");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Name).HasColumnName("Name");
+            entity.Property(e => e.Type).HasColumnName("Type");
+            entity.Property(e => e.Subject).HasColumnName("Subject");
+            entity.Property(e => e.Content).HasColumnName("Content");
+            entity.Property(e => e.Variables).HasColumnName("Variables");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
+            entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
         });
     }
 }

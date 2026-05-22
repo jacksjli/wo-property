@@ -26,21 +26,21 @@ public class TenantDbContext : DbContext
         modelBuilder.Entity<Activity>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.ToTable("activities");
-            entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.Name).HasColumnName("name");
-            entity.Property(e => e.Description).HasColumnName("description");
-            entity.Property(e => e.Location).HasColumnName("location");
-            entity.Property(e => e.StartTime).HasColumnName("start_time");
-            entity.Property(e => e.EndTime).HasColumnName("end_time");
-            entity.Property(e => e.MaxParticipants).HasColumnName("max_participants");
-            entity.Property(e => e.CurrentParticipants).HasColumnName("current_participants");
-            entity.Property(e => e.Status).HasColumnName("status");
-            entity.Property(e => e.CoverImage).HasColumnName("cover_image");
-            entity.Property(e => e.Remark).HasColumnName("remark");
-            entity.Property(e => e.ProjectId).HasColumnName("project_id");
-            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.ToTable("CommunityActivities");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Name).HasColumnName("ActivityTitle");
+            entity.Property(e => e.Description).HasColumnName("Description");
+            entity.Property(e => e.Location).HasColumnName("Location");
+            entity.Property(e => e.StartTime).HasColumnName("StartTime");
+            entity.Property(e => e.EndTime).HasColumnName("EndTime");
+            entity.Property(e => e.MaxParticipants).HasColumnName("MaxParticipants");
+            entity.Property(e => e.CurrentParticipants).HasColumnName("ParticipantCount");
+            entity.Property(e => e.Status).HasColumnName("Status");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.CoverImage);
+            entity.Ignore(e => e.Remark);
+            entity.Ignore(e => e.ProjectId);
+            entity.Ignore(e => e.CreatedBy);
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);

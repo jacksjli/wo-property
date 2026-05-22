@@ -95,3 +95,127 @@
 
 _记录人：🪽的芦苇_
 _更新周期：每周一_
+
+## 2026-05-19
+变更同步：完成
+  详见：memory/2026-05-19.md
+
+---
+
+## $(date +%Y-%m-%d) 自动更新
+
+### 字段命名标准化
+- 清理 PascalCase 重复字段（71个）
+- FieldDefinitions: 398 → 235
+- 统一使用 snake_case 命名
+
+### 字段等价映射
+- 新增 field_equivalences 表（52条映射数据）
+- API: /api/field-equivalences/resolve
+- 前端 fieldConfig store 支持等价映射
+
+### 分级刷新机制
+- HIGH (1分钟): fieldDefinition, ticket, ticketType, dispatch
+- MEDIUM (3分钟): personnel, contract, material...
+- LOW (5分钟): building, room...
+- STATIC (10分钟): statistics, project...
+
+### 测试通过
+- 17 个测试项目全部通过
+- 119 个测试用例 100% 通过率
+
+
+## 2026-05-22
+变更同步：完成
+  详见：memory/2026-05-22.md
+
+---
+
+## 2026-05-22 本次审计
+
+### 本次重点模块
+- 第二批模块：物料分类、消息模板、外部人员
+- 第三批模块：报表中心（8个Tab）
+- AnnouncementService 聚合报表 API
+- 侧边栏分类和图标修复
+
+### 执行时间
+2026-05-22 11:05
+
+---
+
+## 模块：物料分类 (MaterialCategory)
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| MaterialService API | ✅ 正常 | 端口 5504 |
+| TenantDbContext 映射 | ✅ 已修复 | PascalCase |
+| 前端 MaterialCategoryList.vue | ✅ 已创建 | 对接 5504 API |
+| 数据库数据 | ✅ 5 条 | 正常工作 |
+
+**评级：🟢 合规**
+
+---
+
+## 模块：消息模板 (MessageTemplate)
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| NotificationService API | ✅ 正常 | 端口 5129 |
+| 前端 MessageTemplateList.vue | ✅ 已创建 | 对接 5129 API |
+| 数据库数据 | ✅ 5 条 | 正常工作 |
+
+**评级：🟢 合规**
+
+---
+
+## 模块：外部人员 (ExternalPerson)
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| VisitorService API | ✅ 正常 | 端口 5513 |
+| 前端 ExternalPersonList.vue | ✅ 已创建 | 对接 5513 API |
+| 数据库数据 | ✅ 2 条 | 正常工作 |
+
+**评级：🟢 合规**
+
+---
+
+## 模块：报表中心 (Reports)
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| AnnouncementService 聚合 API | ✅ 已创建 | 端口 5511 |
+| 设备报表 | ✅ | /api/tenant/announcements/reports/device |
+| 工单报表 | ✅ | /api/tenant/announcements/reports/ticket |
+| 物料报表 | ✅ | /api/tenant/announcements/reports/material |
+| 满意度调查 | ✅ | /api/tenant/announcements/reports/satisfaction |
+| 采购订单 | ✅ | /api/tenant/announcements/purchase-orders |
+| 库存事务 | ✅ | /api/tenant/announcements/stock-transactions |
+| 枚举定义 | ✅ | /api/tenant/announcements/enum-definitions |
+| 综合报表 | ✅ | /api/tenant/announcements/general-reports |
+| 前端 ReportsView.vue | ✅ 已创建 | 8 个 Tab 页面 |
+| 侧边栏菜单 | ✅ 已添加 | 11 个新模块 |
+
+**评级：🟢 合规**
+
+---
+
+## 模块：侧边栏分类
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| App.vue categories | ✅ 已更新 | 新增 3 个分类 |
+| 消息中心 | ✅ | 公告、消息、模板、外部人员 |
+| 数据报表 | ✅ | 统计分析 + 5 个报表模块 |
+| 采购库存 | ✅ | 采购订单、库存事务、枚举定义 |
+| 图标修复 | ✅ | Truck→Van, Coin→Money, BankCard→CreditCard, Sunny→Brush, Goods→ShoppingCart |
+
+**评级：🟢 合规**
+
+---
+
+## 整体评级：🟢 合规
+
+所有本次实现的模块均已通过检查，设计文档与代码一致。
+

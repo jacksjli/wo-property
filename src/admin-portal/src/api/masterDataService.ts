@@ -53,31 +53,31 @@ export interface ApiResponse<T> {
 export const masterDataApi = {
   /** 获取所有字段定义（不分页，一次返回全部） */
   getAllFieldsNoPagination: () =>
-    masterApi.get<ApiResponse<FieldDefinition[]>>('/api/field-definitions/all'),
+    masterApi.get<ApiResponse<FieldDefinition[]>>('/field-definitions/all'),
 
   /** 获取所有字段定义（分页） */
   getAllFields: (page: number = 1, pageSize: number = 100) =>
-    masterApi.get<ApiResponse<FieldDefinition[]>>('/api/field-definitions', { params: { page, pageSize } }),
+    masterApi.get<ApiResponse<FieldDefinition[]>>('/field-definitions', { params: { page, pageSize } }),
 
   /** 获取所有共享字段定义 */
   getSharedFields: () =>
-    masterApi.get<ApiResponse<FieldDefinition[]>>('/api/field-definitions/shared'),
+    masterApi.get<ApiResponse<FieldDefinition[]>>('/field-definitions/shared'),
 
   /** 获取某模块可用的所有字段（私有 + 共享） */
   getFieldsByModule: (module: string) =>
-    masterApi.get<ApiResponse<FieldDefinition[]>>(`/api/field-definitions/by-module/${module}`),
+    masterApi.get<ApiResponse<FieldDefinition[]>>(`/field-definitions/by-module/${module}`),
 
   /** 获取某模块已选的字段（ModuleField 关联） */
   getModuleFields: (module: string) =>
-    masterApi.get<ApiResponse<ModuleField[]>>(`/api/module-fields/${module}`),
+    masterApi.get<ApiResponse<ModuleField[]>>(`/module-fields/${module}`),
 
   /** 获取某模块的字段配置（含 alias 覆盖） */
   getModuleFieldConfig: (module: string) =>
-    masterApi.get<ApiResponse<Record<string, any>>>(`/api/module-fields/${module}/field-config`),
+    masterApi.get<ApiResponse<Record<string, any>>>(`/module-fields/${module}/field-config`),
 
   /** 创建字段定义 */
   createFieldDefinition: (data: Partial<FieldDefinition>) =>
-    masterApi.post<FieldDefinition>('/api/field-definitions', data),
+    masterApi.post<FieldDefinition>('/field-definitions', data),
 
   /** 更新字段定义 */
   updateFieldDefinition: (id: number, data: Partial<FieldDefinition>) =>
@@ -85,7 +85,7 @@ export const masterDataApi = {
 
   /** 为模块添加字段 */
   addModuleField: (module: string, fieldDefinitionId: number) =>
-    masterApi.post('/api/module-fields', { module, fieldDefinitionId }),
+    masterApi.post('/module-fields', { module, fieldDefinitionId }),
 
   /** 从模块移除字段 */
   removeModuleField: (id: number) =>
@@ -98,6 +98,14 @@ export const masterDataApi = {
   /** 获取字段等价组关系 */
   getFieldEquivalentGroups: () =>
     masterApi.get<ApiResponse<Record<string, string[]>>>(`/api/field-definition-equivalents`),
+
+  /** 获取所有字段等价映射 */
+  getFieldEquivalences: () =>
+    masterApi.get<ApiResponse<FieldEquivalentGroup[]>>('/api/field-equivalences'),
+
+  /** 解析字段名为标准名（支持等价映射） */
+  resolveFields: (fields: string[]) =>
+    masterApi.post<ApiResponse<Record<string, string>>>('/api/field-equivalences/resolve', { fields }),
 }
 
 export default masterDataApi

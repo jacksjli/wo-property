@@ -1,6 +1,7 @@
 using Xunit;
 using Moq;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using WO.Property.TicketService.Tenant;
 
@@ -15,9 +16,11 @@ public class TenantDbFactoryTests
             ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4",
             ["ConnectionStrings:TenantDb"] = "Server=127.0.0.1;Port=3306;Database={db_name};User=root;Password=;CharSet=utf8mb4"
         };
-        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemorySettings).Build();
+        var mockEnv = new Mock<IWebHostEnvironment>();
+        mockEnv.Setup(e => e.ContentRootPath).Returns("/Users/mac/Projects/WO-Property-Management/src/WO.Property.TicketService");
+        var configLoader = new TenantConfigLoader(mockEnv.Object);
         var logger = new Mock<ILogger<TenantDbFactory>>().Object;
-        return new TenantDbFactory(config, logger);
+        return new TenantDbFactory(configLoader, logger);
     }
 
     [Fact]
@@ -54,13 +57,12 @@ public class TenantDbFactoryTests
     }
 
     [Fact]
-    public void GetTenantConnectionString_UnknownTenant_ReturnsValidFormat()
+    public void GetTenantConnectionString_UnknownTenant_ThrowsException()
     {
         var factory = CreateFactory();
-        // GetTenantConnectionString accepts any tenant and replaces DB name
-        // No validation exists - it replaces the database in the connection string
-        var connStr = factory.GetTenantConnectionString("unknown_tenant");
-        Assert.Contains("unknown_tenant", connStr);
+        // Unknown tenant should throw InvalidOperationException
+        Assert.Throws<InvalidOperationException>(() => 
+            factory.GetTenantConnectionString("unknown_tenant"));
     }
 
     [Fact]

@@ -152,7 +152,13 @@ const savePermissions = async () => {
   if (!selectedRole.value) return
   try {
     const res = await masterApi.put(`/roles/${selectedRole.value.code}/permissions`, {
-      permissions: permissions.value
+      permissions: permissions.value.map(p => ({
+        ModuleKey: p.moduleKey,
+        CanView: p.canView,
+        CanCreate: p.canCreate,
+        CanEdit: p.canEdit,
+        CanDelete: p.canDelete
+      }))
     })
     if (res.success) {
       ElMessage.success('权限保存成功')

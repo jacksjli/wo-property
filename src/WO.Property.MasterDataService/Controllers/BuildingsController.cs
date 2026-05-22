@@ -97,10 +97,12 @@ public class BuildingsController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "楼栋不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
-        var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Address = @address", "TotalFloors = @totalFloors", "TotalUnits = @totalUnits", "Status = @status", "UpdatedAt = @updatedAt" };
+        var updates = new List<string> { "Area = @area", "Name = @name", "Code = @code", "Description = @description", "Address = @address", "TotalFloors = @totalFloors", "TotalUnits = @totalUnits", "Status = @status", "UpdatedAt = @updatedAt" };
         using var cmd = new MySqlCommand($"UPDATE Buildings SET {string.Join(", ", updates)} WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@area", (object)req.Area ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@name", req.Name);
         cmd.Parameters.AddWithValue("@code", req.Code);
         cmd.Parameters.AddWithValue("@description", (object)req.Description ?? DBNull.Value);
@@ -115,10 +117,32 @@ public class BuildingsController : ControllerBase
         return Ok(new { success = true, message = "楼栋更新成功" });
     }
 
-    /// <summary>删除楼栋</summary>
+    /// <summary>删除楼栋（自动清除关联）</summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
+        // 先删除 Rooms（BuildingId 为 NOT NULL，需先删除关联记录）
+        var delRoomsCmd = new MySqlCommand("DELETE FROM Rooms WHERE BuildingId = @id", _db);
+        delRoomsCmd.Parameters.AddWithValue("@id", id);
+        await delRoomsCmd.ExecuteNonQueryAsync();
+
+        // 删除 CleaningRecords（BuildingId 为 NOT NULL）
+        var delCleaningCmd = new MySqlCommand("DELETE FROM CleaningRecords WHERE BuildingId = @id", _db);
+        delCleaningCmd.Parameters.AddWithValue("@id", id);
+        await delCleaningCmd.ExecuteNonQueryAsync();
+
+        // 清除其他关联表的 BuildingId 引用（这些列允许 NULL）
+        var nullableTables = new[] { "Devices", "InspectionRecords", 
+            "ParkingRecords", "Residents", "Tickets", "Visitors" };
+        
+        foreach (var table in nullableTables)
+        {
+            var clearCmd = new MySqlCommand($"UPDATE {table} SET BuildingId = NULL WHERE BuildingId = @id", _db);
+            clearCmd.Parameters.AddWithValue("@id", id);
+            await clearCmd.ExecuteNonQueryAsync();
+        }
+
+        // 删除楼栋
         using var cmd = new MySqlCommand("DELETE FROM Buildings WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         var affected = await cmd.ExecuteNonQueryAsync();
@@ -133,6 +157,7 @@ public class BuildingsController : ControllerBase
         Id = Convert.ToInt32(r["Id"]),
         Name = r["Name"].ToString() ?? "",
         Code = r["Code"].ToString() ?? "",
+        Area = r["Area"] as string ?? "",
         Description = r["Description"] as string,
         Address = r["Address"] as string,
         TotalFloors = r["TotalFloors"] == DBNull.Value ? null : Convert.ToInt32(r["TotalFloors"]),
@@ -146,6 +171,7 @@ public class BuildingsController : ControllerBase
 public class BuildingItem
 {
     public int Id { get; set; }
+    public string? Area { get; set; }
     public string Name { get; set; } = "";
     public string Code { get; set; } = "";
     public string? Description { get; set; }

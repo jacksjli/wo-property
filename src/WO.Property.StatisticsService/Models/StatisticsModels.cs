@@ -67,3 +67,24 @@ public class TrendRecord : BaseEntity
     [MaxLength(100)] public string? Category { get; set; }
     [MaxLength(200)] public string? Remarks { get; set; }
 }
+public class MetricSnapshotDto
+{
+    public int TotalProperties { get; set; }
+    public int TotalUnits { get; set; }
+    public decimal OccupancyRate { get; set; }
+    public decimal TotalRevenue { get; set; }
+    public decimal PropertyFeeRevenue { get; set; }
+    public decimal CollectionRate { get; set; }
+    public decimal TotalExpense { get; set; }
+    public int TotalComplaints { get; set; }
+    public int ResolvedComplaints { get; set; }
+    public decimal ComplaintResolveRate { get; set; }
+    public int TotalTickets { get; set; }
+    public int ResolvedTickets { get; set; }
+    public int TotalInspections { get; set; }
+    public int PassedInspections { get; set; }
+    public int IssuesFound { get; set; }
+    public int IssuesResolved { get; set; }
+    public int TotalVisitors { get; set; }
+    public int ActiveVisitors { get; set; }
+}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { ticketApi } from '../../api/http'
+import { ref, computed, onMounted, watch } from 'vue'
+import { ticketApi, masterApi } from '../../api/http'
+import { ticketTypeApi } from '../../api/ticketType'
 import { getTickets } from '@/api/ticket'
 import axios from 'axios'
 
@@ -15,6 +16,7 @@ authHttp.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
+import { currentProject } from '@/stores/project'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, Clock, Check, Close, Warning, Setting } from '@element-plus/icons-vue'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
@@ -66,19 +68,23 @@ const viewingTicket = ref<any>(null)
 
 // 表单数据
 const form = ref({
+  ticketTypeId: null as number | null,
   title: '',
   description: '',
   type: 'Repair',
   priority: 'Normal',
   contactName: '',
   contactPhone: '',
-  locationId: null as number | null
+  locationId: null as number | null,
+  areaId: null as number | null,
+  buildingId: null as number | null,
+  roomId: null as number | null,
+  jobTypeIds: [] as number[]
 })
 
 const rules: FormRules = {
-  title: [{ required: true, message: '请输入工单标题', trigger: 'blur' }],
-  description: [{ required: true, message: '请输入工单描述', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择工单类型', trigger: 'change' }],
+  ticketTypeId: [{ required: true, message: '请选择工单类型', trigger: 'change' }],
+  description: [],
   priority: [{ required: true, message: '请选择优先级', trigger: 'change' }]
 }
 
@@ -98,11 +104,81 @@ const priorityOptions = [
 ]
 
 const statusOptions = [
+  { value: 'New', label: '新建', type: 'info' },
   { value: 'Open', label: '待处理', type: 'primary' },
+  { value: 'Dispatched', label: '已派单', type: 'warning' },
   { value: 'Processing', label: '处理中', type: 'warning' },
+  { value: 'Escalated', label: '已升级', type: 'danger' },
+  { value: 'Finished', label: '已完成', type: 'success' },
   { value: 'Resolved', label: '已解决', type: 'success' },
   { value: 'Closed', label: '已关闭', type: 'info' }
 ]
+
+// 工单类型
+const ticketTypes = ref<any[]>([])
+const loadTicketTypes = async () => {
+  try {
+    const r: any = await ticketTypeApi.getAll()
+    if (r.success) ticketTypes.value = r.data || []
+  } catch {}
+}
+
+// 工种列表（来自 MasterDataService）
+const jobTypes = ref<any[]>([])
+const loadJobTypes = async () => {
+  try {
+    const r: any = await masterApi.get('/job-types')
+    if (r.success) jobTypes.value = r.data || []
+  } catch {}
+}
+
+// 工种多选（按工单类型筛选，Category 匹配工单类型 Name）
+const selectedJobTypeIds = ref<number[]>([])
+const groupedJobTypes = computed(() => {
+  const selectedType = ticketTypes.value.find(tt => tt.id === form.value.ticketTypeId)
+  if (!selectedType || !selectedType.name) return []
+  // 根据工单类型名称过滤工种（JobTypes.Category = TicketTypes.Name）
+  const filtered = jobTypes.value.filter(jt => jt.category === selectedType.name)
+  if (filtered.length === 0) return []
+  return [{ name: selectedType.name, items: filtered }]
+})
+
+watch(() => form.value.ticketTypeId, () => {
+  selectedJobTypeIds.value = []
+})
+
+// 位置：区域/楼栋/房号三级联动
+const areas = ref<any[]>([])
+const buildings = ref<any[]>([])
+const rooms = ref<any[]>([])
+const selectedAreaId = ref<number | null>(null)
+const selectedBuildingId = ref<number | null>(null)
+const selectedRoomId = ref<number | null>(null)
+
+const loadAreas = async () => {
+  try {
+    const r: any = await masterApi.get('/hierarchy/areas')
+    if (r.success) areas.value = r.data || []
+  } catch {}
+}
+
+const loadBuildingsForArea = async (areaId: number) => {
+  buildings.value = []
+  rooms.value = []
+  selectedBuildingId.value = null
+  selectedRoomId.value = null
+  try {
+    const r: any = await masterApi.get(`/hierarchy/area-buildings?areaId=${areaId}`)
+    if (r.success && r.data?.buildings) buildings.value = r.data.buildings
+  } catch {}
+}
+
+const loadRoomsForBuilding = async (buildingId: number) => {
+  rooms.value = []
+  selectedRoomId.value = null
+  const b = buildings.value.find(b => b.id === buildingId)
+  if (b?.rooms) rooms.value = b.rooms
+}
 
 // 加载数据
 const loadData = async () => {
@@ -115,11 +191,12 @@ const loadData = async () => {
     if (searchQuery.value) params.keyword = searchQuery.value
     if (filterStatus.value) params.status = filterStatus.value
     if (filterPriority.value) params.priority = filterPriority.value
-    
-    const response = await ticketApi.get('/api/tickets', { params })
+
+    const response = await ticketApi.get('/api/tenant/tickets', { params })
     if (response.success) {
       tickets.value = response.data || []
       total.value = response.total || 0
+      calculateStats(tickets.value)
     }
   } catch (error: any) {
     // API失败时静默使用模拟数据，不显示网络错误
@@ -134,9 +211,9 @@ const loadData = async () => {
 const calculateStats = (data: any[]) => {
   stats.value = {
     total: data.length,
-    open: data.filter(t => t.status === 'Open').length,
-    processing: data.filter(t => t.status === 'Processing').length,
-    resolved: data.filter(t => t.status === 'Resolved').length,
+    open: data.filter(t => ['New', 'Open'].includes(t.status)).length,
+    processing: data.filter(t => ['Dispatched', 'Processing'].includes(t.status)).length,
+    resolved: data.filter(t => ['Resolved', 'Finished'].includes(t.status)).length,
     closed: data.filter(t => t.status === 'Closed').length
   }
 }
@@ -182,24 +259,41 @@ const handleSizeChange = (size: number) => {
 const openCreateDialog = () => {
   dialogTitle.value = '创建工单'
   editingId.value = null
+  selectedAreaId.value = null
+  selectedBuildingId.value = null
+  selectedRoomId.value = null
+  selectedJobTypeIds.value = []
+  buildings.value = []
+  rooms.value = []
   form.value = {
+    ticketTypeId: null,
     title: '',
     description: '',
     type: 'Repair',
     priority: 'Normal',
     contactName: '',
     contactPhone: '',
-    locationId: null
+    locationId: null,
+    areaId: null,
+    buildingId: null,
+    roomId: null,
+    jobTypeIds: []
   }
   dialogVisible.value = true
 }
 
 // 打开编辑对话框
-const handleEdit = (row: any) => {
+const handleEdit = async (row: any) => {
   dialogTitle.value = '编辑工单'
   editingId.value = row.id
+  selectedAreaId.value = row.areaId || null
+  if (row.areaId) await loadBuildingsForArea(row.areaId)
+  selectedBuildingId.value = row.buildingId || null
+  if (row.buildingId) await loadRoomsForBuilding(row.buildingId)
+  selectedRoomId.value = row.roomId || null
   form.value = {
     title: row.title,
+    ticketTypeId: row.ticketTypeId || null,
     description: row.description,
     type: row.type,
     priority: row.priority,
@@ -216,24 +310,58 @@ const handleView = (row: any) => {
   detailDialogVisible.value = true
 }
 
+// 监听工单类型变化，自动填充标题
+watch(() => form.value.ticketTypeId, (newId) => {
+  if (!editingId.value && newId) {
+    const type = ticketTypes.value.find(t => t.id === newId)
+    if (type) form.value.title = type.name
+  }
+})
+
+// 区域选择
+watch(selectedAreaId, async (newId) => {
+  if (newId) await loadBuildingsForArea(newId)
+})
+
+// 楼栋选择
+watch(selectedBuildingId, async (newId) => {
+  if (newId) await loadRoomsForBuilding(newId)
+})
+
 // 提交表单
 const handleSubmit = async () => {
   if (!formRef.value) return
   try {
     await formRef.value.validate()
     submitting.value = true
-    
+
+    const payload = {
+      Title: form.value.title,
+      Description: form.value.description || null,
+      Category: form.value.type,
+      Priority: form.value.priority || 'Medium',
+      ProjectId: currentProject.value?.id || 1,
+      TicketTypeId: form.value.ticketTypeId || null,
+      AreaId: selectedAreaId.value || null,
+      BuildingId: selectedBuildingId.value || null,
+      RoomId: selectedRoomId.value || null,
+      ContactPersonName: form.value.contactName || null,
+      ContactPhone: form.value.contactPhone || null,
+      Location: form.value.locationId ? `location_${form.value.locationId}` : null,
+      JobTypeIds: selectedJobTypeIds.value.length ? selectedJobTypeIds.value : null,
+    }
     if (editingId.value) {
-      await ticketApi.put(`/api/tickets/${editingId.value}`, form.value)
+      await ticketApi.put(`/api/tenant/tickets/${editingId.value}`, payload)
       ElMessage.success('工单更新成功')
     } else {
-      await ticketApi.post('/api/tickets', form.value)
+      await ticketApi.post('/api/tenant/tickets', payload)
       ElMessage.success('工单创建成功')
     }
     dialogVisible.value = false
     loadData()
   } catch (error: any) {
-    if (error !== false) ElMessage.error(error.message || '操作失败')
+    console.error('创建工单失败:', error)
+    if (error !== false) ElMessage.error(error.message || error || '操作失败')
   } finally {
     submitting.value = false
   }
@@ -247,7 +375,7 @@ const handleProcess = async (row: any) => {
       cancelButtonText: '取消',
       type: 'info'
     })
-    await ticketApi.put(`/api/tickets/${row.id}/status`, { status: 'Processing' })
+    await ticketApi.put(`/api/tenant/tickets/${row.id}`, { status: 'Processing' })
     ElMessage.success('工单已开始处理')
     loadData()
   } catch (error: any) {
@@ -263,7 +391,7 @@ const handleResolve = async (row: any) => {
       cancelButtonText: '取消',
       type: 'success'
     })
-    await ticketApi.put(`/api/tickets/${row.id}/status`, { status: 'Resolved' })
+    await ticketApi.put(`/api/tenant/tickets/${row.id}`, { status: 'Resolved' })
     ElMessage.success('工单已完成')
     loadData()
   } catch (error: any) {
@@ -279,7 +407,7 @@ const handleClose = async (row: any) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await ticketApi.put(`/api/tickets/${row.id}/status`, { status: 'Closed' })
+    await ticketApi.put(`/api/tenant/tickets/${row.id}`, { status: 'Closed' })
     ElMessage.success('工单已关闭')
     loadData()
   } catch (error: any) {
@@ -295,7 +423,7 @@ const handleDelete = async (row: any) => {
       cancelButtonText: '取消',
       type: 'error'
     })
-    await ticketApi.delete(`/api/tickets/${row.id}`)
+    await ticketApi.delete(`/api/tenant/tickets/${row.id}`)
     ElMessage.success('工单已删除')
     loadData()
   } catch (error: any) {
@@ -365,6 +493,9 @@ const getTypeLabel = (type: string) => {
 
 onMounted(() => {
   loadData()
+  loadTicketTypes()
+  loadJobTypes()
+  loadAreas()
 })
 </script>
 
@@ -466,8 +597,8 @@ onMounted(() => {
           :align="field.align || 'center'"
         >
           <template #default="{ row }">
-            <span v-if="field.key === 'ticketNo'" class="ticket-number">{{ row.ticketCode }}</span>
-            <span v-else-if="field.key === 'type'">{{ getTypeLabel(row.category) }}</span>
+            <span v-if="field.key === 'ticketCode'" class="ticket-number">{{ row.ticketCode }}</span>
+            <span v-else-if="field.key === 'category'">{{ getTypeLabel(row.category) }}</span>
             <span v-else-if="field.key === 'status'">
               <el-tag :type="getStatusConfig(row.status).type" size="small">
                 {{ getStatusConfig(row.status).label }}
@@ -478,7 +609,7 @@ onMounted(() => {
                 {{ getPriorityConfig(row.priority).label }}
               </el-tag>
             </span>
-            <span v-else-if="field.key === 'createTime'">{{ formatDateTime(row.createdAt) }}</span>
+            <span v-else-if="field.key === 'createdAt'">{{ formatDateTime(row.createdAt) }}</span>
             <span v-else>{{ row[field.key] || '-' }}</span>
           </template>
         </el-table-column>
@@ -510,20 +641,49 @@ onMounted(() => {
     <!-- 创建/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="工单标题" prop="title">
-          <el-input v-model="form.title" placeholder="请输入工单标题" maxlength="100" show-word-limit />
+        <el-form-item label="工单类型" prop="ticketTypeId">
+          <el-select v-model="form.ticketTypeId" placeholder="请选择工单类型" style="width: 100%" :disabled="!!editingId">
+            <el-option v-for="tt in ticketTypes" :key="tt.id" :label="tt.name" :value="tt.id" />
+          </el-select>
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-form-item label="区域">
+              <el-select v-model="selectedAreaId" placeholder="选择区域" style="width: 100%" clearable>
+                <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="楼栋">
+              <el-select v-model="selectedBuildingId" placeholder="选择楼栋" style="width: 100%" :disabled="!selectedAreaId" clearable>
+                <el-option v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="房号">
+              <el-select v-model="selectedRoomId" placeholder="选择房号" style="width: 100%" :disabled="!selectedBuildingId" clearable>
+                <el-option v-for="r in rooms" :key="r.id" :label="r.roomNumber" :value="r.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="工种">
+          <div v-if="groupedJobTypes.length > 0" class="job-type-groups">
+            <div v-for="group in groupedJobTypes" :key="group.name" class="job-type-group">
+              <div class="job-type-group-title">{{ group.name }}</div>
+              <el-checkbox-group v-model="selectedJobTypeIds">
+                <el-checkbox v-for="jt in group.items" :key="jt.id" :value="jt.id" style="margin-right:12px;margin-bottom:4px;">{{ jt.name }}</el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+          <div v-else style="color:#999;font-size:13px;">请先选择工单类型</div>
         </el-form-item>
         <el-form-item label="工单描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="4" placeholder="请详细描述工单内容" maxlength="500" show-word-limit />
         </el-form-item>
         <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="工单类型" prop="type">
-              <el-select v-model="form.type" style="width: 100%">
-                <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </el-form-item>
-          </el-col>
           <el-col :span="12">
             <el-form-item label="优先级" prop="priority">
               <el-select v-model="form.priority" style="width: 100%">
@@ -652,4 +812,6 @@ onMounted(() => {
 .ticket-number { font-family: Monaco, Menlo, monospace; font-weight: 500; color: #374151; }
 
 .pagination-wrapper { display: flex; justify-content: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+.job-type-groups { display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 4px; }
+.job-type-group-title { font-weight: bold; font-size: 12px; color: #409eff; margin-bottom: 4px; }
 </style>

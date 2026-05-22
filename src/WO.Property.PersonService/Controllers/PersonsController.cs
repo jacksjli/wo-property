@@ -132,15 +132,14 @@ public class PersonsController : ControllerBase
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
 
-        // Check duplicate staffId
-        await using var checkStaff = new MySqlCommand("SELECT COUNT(*) FROM Personnel WHERE StaffId = @staffId", conn);
-        checkStaff.Parameters.AddWithValue("@staffId", dto.GetValueOrDefault("staffId") ?? "");
-        if (Convert.ToInt32(await checkStaff.ExecuteScalarAsync()) > 0)
-            return BadRequest(new { success = false, message = "Staff ID already exists" });
-
         // Check duplicate phone
+        var phoneValue = dto.TryGetValue("phone", out var pv) ? pv?.ToString() ?? "" : "";
+        if (!dto.ContainsKey("employeeNo") || string.IsNullOrEmpty(dto.GetValueOrDefault("employeeNo")?.ToString()))
+            dto["employeeNo"] = "EMP" + DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString().Substring(5);
+        if (!dto.ContainsKey("status"))
+            dto["status"] = "active";
         await using var checkPhone = new MySqlCommand("SELECT COUNT(*) FROM Personnel WHERE Phone = @phone", conn);
-        checkPhone.Parameters.AddWithValue("@phone", dto.GetValueOrDefault("phone") ?? "");
+        checkPhone.Parameters.AddWithValue("@phone", phoneValue);
         if (Convert.ToInt32(await checkPhone.ExecuteScalarAsync()) > 0)
             return BadRequest(new { success = false, message = "Phone already exists" });
 
@@ -156,7 +155,7 @@ public class PersonsController : ControllerBase
             parameters.Add(new MySqlParameter($"@{kvp.Key}", kvp.Value.ToString()));
         }
 
-        var sql = $"INSERT INTO Persons ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}); SELECT LAST_INSERT_ID();";
+        var sql = $"INSERT INTO Personnel ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}); SELECT LAST_INSERT_ID();";
         await using var cmd = new MySqlCommand(sql, conn);
         foreach (var p in parameters) cmd.Parameters.Add(p);
 
@@ -184,7 +183,7 @@ public class PersonsController : ControllerBase
         var sets = dto.Keys.Select(k => $"{k} = @{k}").ToList();
         var parameters = dto.Select(kvp => new MySqlParameter($"@{kvp.Key}", kvp.Value?.ToString() ?? (object)DBNull.Value)).ToList();
 
-        var sql = $"UPDATE Persons SET {string.Join(", ", sets)} WHERE Id = @id";
+        var sql = $"UPDATE Personnel SET {string.Join(", ", sets)} WHERE Id = @id";
         await using var cmd = new MySqlCommand(sql, conn);
         foreach (var p in parameters) cmd.Parameters.Add(p);
         cmd.Parameters.AddWithValue("@id", id);

@@ -179,6 +179,7 @@ public class PersonnelController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "人员不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var updates = new List<string> { "UpdatedAt = @updatedAt" };
         var parameters = new List<MySqlParameter> { new MySqlParameter("@id", id), new MySqlParameter("@updatedAt", DateTime.UtcNow) };
@@ -236,6 +237,7 @@ public class PersonnelController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "人员不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var existingBackups = reader["Backups"] as string;
         var backups = string.IsNullOrEmpty(existingBackups) ? new List<BackupItem>() : JsonSerializer.Deserialize<List<BackupItem>>(existingBackups) ?? new List<BackupItem>();
@@ -260,6 +262,7 @@ public class PersonnelController : ControllerBase
         using var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return NotFound(new { success = false, message = "人员不存在" });
+        reader.Close(); // 关闭 reader 才能执行下一个命令
 
         var existingBackups = reader["Backups"] as string;
         if (string.IsNullOrEmpty(existingBackups))

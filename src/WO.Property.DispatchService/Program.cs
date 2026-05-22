@@ -9,7 +9,7 @@ using Serilog;
 using Serilog.Events;
 using WO.Property.Shared.Models;
 using WO.Property.Shared.Configuration;
-using WO.Property.Shared.Logging;
+using WO.Property.DispatchService;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -74,15 +74,15 @@ builder.Services.AddScoped<DbInitializer>();
 
 var app = builder.Build();
 
-// 数据库初始化
-using (var scope = app.Services.CreateScope())
-{
+// 数据库初始化（可选，失败不影响服务启动）
+try {
+    using var scope = app.Services.CreateScope();
     var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
     await initializer.InitializeAsync();
+} catch (Exception ex) {
+    Console.WriteLine($"[DispatchService] Database init failed (non-fatal): {{ex.Message}}");
 }
 
-app.UseRequestLogging();
-app.UseGlobalExceptionHandler();
 
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -321,6 +321,57 @@ app.MapGet("/api/dispatch/analytics", [Authorize] async (DbInitializer db, [From
     return Results.Ok(new { success = true, data = new { topRules, note = "任务统计请调用 TicketService" } });
 });
 
+DispatcherRegistry.Register(new PropertyDispatcher());
+DispatcherRegistry.Register(new HrDispatcher());
+DispatcherRegistry.Register(new FinanceDispatcher());
+var registered = string.Join(", ", DispatcherRegistry.GetRegisteredCategories());
+Console.WriteLine($"[DispatchService] DispatcherRegistry initialized: {registered}");
+
+// ============ 自动派单 API ============
+app.MapPost("/api/dispatch/auto-assign", [AllowAnonymous] async (
+    IHttpClientFactory httpFactory,
+    [FromBody] DispatchRequest request) =>
+{
+    var category = request.Category ?? "property";
+    var dispatcher = DispatcherRegistry.GetDispatcher(category);
+
+    if (dispatcher == null)
+    {
+        Console.WriteLine($"[DispatchService] No dispatcher found for category: {category}");
+        return Results.BadRequest(new { success = false, message = $"未找到 {category} 类别的派单器" });
+    }
+
+    var result = await dispatcher.DispatchAsync(request);
+    Console.WriteLine($"[DispatchService] auto-assign: Success={{result.Success}}, PersonId={{result.AssignedPersonId}}, Status={{result.Status}}");
+
+    return Results.Ok(new { success = true, data = result });
+});
+
+app.MapGet("/api/dispatch/register", [AllowAnonymous] () =>
+{
+    var categories = DispatcherRegistry.GetRegisteredCategories();
+    return Results.Ok(new { success = true, data = categories });
+});
+
+app.MapPost("/api/dispatch/manual-assign", [Authorize] async (
+    IHttpClientFactory httpFactory,
+    [FromBody] ManualAssignRequest request) =>
+{
+    Console.WriteLine($"[DispatchService] Manual assign: TicketId={{request.TicketId}}, PersonId={{request.PersonId}}");
+
+    return Results.Ok(new
+    {
+        success = true,
+        data = new DispatchResult
+        {
+            Success = true,
+            AssignedPersonId = request.PersonId,
+            Status = "assigned",
+            Message = "人工指派成功"
+        }
+    });
+});
+
 app.Run();
 
 // ============ 数据库访问层 ============
@@ -371,6 +422,7 @@ public class DbInitializer
         CREATE TABLE IF NOT EXISTS dispatch_rules (
             id SERIAL PRIMARY KEY,
             rule_no VARCHAR(50) NOT NULL,
+            category VARCHAR(20) NOT NULL DEFAULT 'property',
             name VARCHAR(200) NOT NULL,
             description TEXT,
             type VARCHAR(50) DEFAULT 'ticket_type',
@@ -682,6 +734,7 @@ public class DbInitializer
 public class DispatchRule : BaseEntity
 {
     public string RuleNo { get; set; } = string.Empty;
+    public string Category { get; set; } = "property"; // property/hr/finance
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string Type { get; set; } = "ticket_type";

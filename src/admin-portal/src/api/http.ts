@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
 import { getServiceUrl, SERVICES } from './config'
 
 // 是否正在刷新 Token
@@ -70,6 +69,23 @@ const createHttpClient = (baseURL: string) => {
       const token = localStorage.getItem('token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
+      }
+      // 租户隔离：每次请求带上 X-Tenant header（兼容旧系统）
+      const tenantCode = localStorage.getItem('tenantCode')
+      if (tenantCode) {
+        config.headers['X-Tenant'] = tenantCode
+      }
+      // 单租户多项目：每次请求带上 X-Project header
+      const projectJson = localStorage.getItem('currentProject')
+      if (projectJson) {
+        try {
+          const project = JSON.parse(projectJson)
+          if (project.code) {
+            config.headers['X-Project'] = project.code
+          }
+        } catch (e) {
+          // ignore parse error
+        }
       }
       return config
     },
@@ -146,12 +162,14 @@ const createHttpClient = (baseURL: string) => {
 // 导出各服务API客户端
 export const authApi = createHttpClient(getServiceUrl('auth'))
 export const ticketApi = createHttpClient(getServiceUrl('ticket'))
+export const ticketTypeApi = createHttpClient(getServiceUrl('ticketType'))
 // MaterialService via Gateway /api/materials
 export const notificationApi = createHttpClient(getServiceUrl('notification'))
 export const contractApi = createHttpClient(getServiceUrl('contract'))
 export const financeApi = createHttpClient(getServiceUrl('finance'))
 export const inspectionApi = createHttpClient(getServiceUrl('inspection'))
 export const deviceApi = createHttpClient(getServiceUrl('device'))
+export const materialApi = createHttpClient(getServiceUrl('material') + '/api/tenant/material')
 export const accessControlApi = createHttpClient(getServiceUrl('accessControl'))
 export const announcementApi = createHttpClient(getServiceUrl('announcement'))
 export const cleaningApi = createHttpClient(getServiceUrl('cleaning'))
@@ -163,7 +181,9 @@ export const renovationApi = createHttpClient(getServiceUrl('renovation'))
 // All services route through API Gateway (port 5000)
 export const statisticsApi = createHttpClient(getServiceUrl("statistics"))
 export const personApi = createHttpClient(getServiceUrl('person'))
-export const masterApi = createHttpClient('http://localhost:5000/api/master-data')
+export const masterApi = createHttpClient(getServiceUrl('masterData') + '/api')
+// CenterService for project management
+export const centerApi = createHttpClient(getServiceUrl('center'))
 // Alias for backward compatibility
 export const departmentApi = masterApi
 

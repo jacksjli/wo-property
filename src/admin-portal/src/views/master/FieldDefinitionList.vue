@@ -234,12 +234,20 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    // 构建符合后端字段名的 payload
     const payload = {
-      ...form.value,
-      // aliases 转为 JSON 数组
-      aliases: form.value.aliases
-        ? JSON.stringify(form.value.aliases.split(',').map(s => s.trim()).filter(Boolean))
-        : null
+      fieldKey: form.value.code,
+      displayName: form.value.name,
+      fieldType: form.value.dataType,
+      source: 'FieldDefinition',  // 固定来源
+      isShared: form.value.category === 'shared',
+      module: form.value.module || null,
+      options: null,
+      defaultValue: null,
+      isRequired: form.value.isRequired,
+      width: 100,
+      sortOrder: form.value.sort || 0,
+      status: form.value.isActive ? 'Active' : 'Inactive',
     }
 
     if (editingId.value) {
