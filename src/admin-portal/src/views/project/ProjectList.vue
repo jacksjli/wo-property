@@ -129,9 +129,42 @@ const toggleModule = (moduleName: string) => {
   }
   
   const index = selectedProject.value.modules.indexOf(moduleName)
+  const mod = allModules.find(m => m.name === moduleName)
+  
   if (index === -1) {
+    // 选中模块
     selectedProject.value.modules.push(moduleName)
+    
+    // 如果有依赖模块，自动勾选依赖
+    if (mod?.dependencies) {
+      for (const dep of mod.dependencies) {
+        if (!selectedProject.value.modules.includes(dep)) {
+          selectedProject.value.modules.push(dep)
+        }
+      }
+    }
+    
+    // 如果是被依赖的模块，检查是否需要勾选主模块
+    if (mod?.dependencies?.length === 0) {
+      // 检查是否有其他模块依赖这个模块
+      const hasDependentModules = allModules.some(m => 
+        m.dependencies?.includes(moduleName) && 
+        selectedProject.value.modules.includes(m.name)
+      )
+      if (!hasDependentModules && !selectedProject.value.modules.includes(moduleName)) {
+        // 不需要强制勾选
+      }
+    }
   } else {
+    // 取消模块：检查是否被其他已选模块依赖
+    const dependentModules = allModules.filter(m => 
+      m.dependencies?.includes(moduleName) && 
+      selectedProject.value.modules.includes(m.name)
+    )
+    if (dependentModules.length > 0) {
+      ElMessage.warning(`"${moduleName}"被以下模块依赖，无法取消：${dependentModules.map(d => d.name).join('、')}`)
+      return
+    }
     selectedProject.value.modules.splice(index, 1)
   }
   

@@ -38,7 +38,7 @@ const projects = ref<any[]>([
 
 // 所有可用模块
 const allModules = [
-  { name: '工单管理', icon: 'Tickets', key: 'ticket', path: '/tickets' },
+  { name: '工单管理', icon: 'Tickets', key: 'ticket', path: '/tickets', dependencies: ['派单规则', '超时设置'] },
   { name: '设备管理', icon: 'Monitor', key: 'device', path: '/device' },
   { name: '物料管理', icon: 'Box', key: 'material', path: '/material' },
   { name: '物料分类', icon: 'Box', key: 'materialCategory', path: '/material-category' },
