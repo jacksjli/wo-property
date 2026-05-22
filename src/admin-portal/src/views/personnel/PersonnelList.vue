@@ -119,7 +119,9 @@ const form = ref({
   email: '', address: '', education: 'bachelor' as Education, graduateSchool: '', major: '',
   role: 'operator' as PersonnelRole, departmentId: 1, position: '',
   employmentType: 'full_time' as EmploymentType, hireDate: '', contractStart: '', contractEnd: '',
-  salary: 0, ticketTypeIds: [] as number[], specialtyIds: [] as number[], remark: ''
+  salary: 0, ticketTypeIds: [] as number[], specialtyIds: [] as number[], remark: '',
+    status: 'probation', isSupervisor: false, maxConcurrentTickets: 5, avatar: '',
+    backups: '', emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelationship: ''
 })
 
 // 选项
@@ -236,7 +238,9 @@ const handleAdd = () => {
     employeeNo: 'EMP' + String(Date.now()).slice(-5), name: '', gender: 'male', birthday: '',
     idCard: '', phone: '', email: '', address: '', education: 'bachelor', graduateSchool: '', major: '',
     role: 'operator', departmentId: 1, position: '', employmentType: 'full_time', hireDate: today,
-    contractStart: '', contractEnd: '', salary: 0, ticketTypeIds: [], specialtyIds: [], remark: ''
+    contractStart: '', contractEnd: '', salary: 0, ticketTypeIds: [], specialtyIds: [], remark: '',
+    status: 'probation', isSupervisor: false, maxConcurrentTickets: 5, avatar: '',
+    backups: '', emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelationship: ''
   }
   selectedTicketTypeIds.value = []
   jobTypes.value = []
@@ -255,7 +259,10 @@ const handleEdit = async (row: Personnel) => {
     role: row.role, departmentId: row.departmentId || 1, position: row.position,
     employmentType: row.employmentType, hireDate: row.hireDate,
     contractStart: row.contractStart || '', contractEnd: row.contractEnd || '',
-    salary: row.salary || 0, ticketTypeIds: row.ticketTypeIds || [], specialtyIds: row.specialtyIds || [], remark: row.remark || ''
+    salary: row.salary || 0, ticketTypeIds: row.ticketTypeIds || [], specialtyIds: row.specialtyIds || [], remark: row.remark || '',
+    status: row.status || 'probation', isSupervisor: row.isSupervisor || false, maxConcurrentTickets: row.maxConcurrentTickets || 5,
+    avatar: row.avatar || '', backups: row.backups || '', emergencyContactName: row.emergencyContactName || '',
+    emergencyContactPhone: row.emergencyContactPhone || '', emergencyContactRelationship: row.emergencyContactRelationship || ''
   }
   selectedTicketTypeIds.value = [...(row.ticketTypeIds || [])]
   await loadJobTypesForSelected()
@@ -293,8 +300,16 @@ const handleSubmit = async () => {
       contractEnd: form.value.contractEnd || null,
       salary: form.value.salary || null,
       remark: form.value.remark || null,
-      ticketTypeIds: form.value.ticketTypeIds?.length ? JSON.stringify(form.value.ticketTypeIds) : null,
-      specialtyIds: form.value.specialtyIds?.length ? JSON.stringify(form.value.specialtyIds) : null,
+      ticketTypeIds: form.value.ticketTypeIds?.length ? form.value.ticketTypeIds : null,
+      specialtyIds: form.value.specialtyIds?.length ? form.value.specialtyIds : null,
+      status: form.value.status || 'probation',
+      isSupervisor: form.value.isSupervisor || false,
+      maxConcurrentTickets: form.value.maxConcurrentTickets || 5,
+      avatar: form.value.avatar || null,
+      backups: form.value.backups || null,
+      emergencyContactName: form.value.emergencyContactName || null,
+      emergencyContactPhone: form.value.emergencyContactPhone || null,
+      emergencyContactRelationship: form.value.emergencyContactRelationship || null,
     }
 
     if (editingId.value) {

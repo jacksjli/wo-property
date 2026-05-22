@@ -23,7 +23,7 @@ public class TenantDbContext : DbContext
         modelBuilder.Entity<Personnel>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.ToTable("Personnel");
+            entity.ToTable("persons");
 
             entity.Property(e => e.Id).HasColumnName("Id");
             entity.Property(e => e.EmployeeNo).HasColumnName("EmployeeNo").HasMaxLength(30);

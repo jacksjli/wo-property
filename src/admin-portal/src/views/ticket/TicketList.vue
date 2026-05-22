@@ -72,20 +72,22 @@ const form = ref({
   title: '',
   description: '',
   type: 'Repair',
-  priority: 'Normal',
+  priority: 'Medium',
   contactName: '',
   contactPhone: '',
   locationId: null as number | null,
   areaId: null as number | null,
   buildingId: null as number | null,
   roomId: null as number | null,
-  jobTypeIds: [] as number[]
+  jobTypeId: null as number | null
 })
 
 const rules: FormRules = {
   ticketTypeId: [{ required: true, message: '请选择工单类型', trigger: 'change' }],
   description: [],
-  priority: [{ required: true, message: '请选择优先级', trigger: 'change' }]
+  priority: [{ required: true, message: '请选择优先级', trigger: 'change' }],
+  areaId: [{ required: true, message: '请选择区域', trigger: 'change' }],
+  buildingId: [{ required: true, message: '请选择楼栋', trigger: 'change' }]
 }
 
 // 选项配置
@@ -98,8 +100,9 @@ const typeOptions = [
 ]
 
 const priorityOptions = [
-  { value: 'High', label: '高', type: 'danger' },
-  { value: 'Normal', label: '中', type: 'warning' },
+  { value: 'Urgent', label: '紧急', type: 'danger' },
+  { value: 'High', label: '高', type: 'warning' },
+  { value: 'Medium', label: '中', type: 'primary' },
   { value: 'Low', label: '低', type: 'info' }
 ]
 
@@ -133,7 +136,7 @@ const loadJobTypes = async () => {
 }
 
 // 工种多选（按工单类型筛选，Category 匹配工单类型 Name）
-const selectedJobTypeIds = ref<number[]>([])
+const selectedJobTypeId = ref<number | null>(null)
 const groupedJobTypes = computed(() => {
   const selectedType = ticketTypes.value.find(tt => tt.id === form.value.ticketTypeId)
   if (!selectedType || !selectedType.name) return []
@@ -144,7 +147,7 @@ const groupedJobTypes = computed(() => {
 })
 
 watch(() => form.value.ticketTypeId, () => {
-  selectedJobTypeIds.value = []
+  selectedJobTypeId.value = null
 })
 
 // 位置：区域/楼栋/房号三级联动
@@ -165,8 +168,6 @@ const loadAreas = async () => {
 const loadBuildingsForArea = async (areaId: number) => {
   buildings.value = []
   rooms.value = []
-  selectedBuildingId.value = null
-  selectedRoomId.value = null
   try {
     const r: any = await masterApi.get(`/hierarchy/area-buildings?areaId=${areaId}`)
     if (r.success && r.data?.buildings) buildings.value = r.data.buildings
@@ -175,7 +176,6 @@ const loadBuildingsForArea = async (areaId: number) => {
 
 const loadRoomsForBuilding = async (buildingId: number) => {
   rooms.value = []
-  selectedRoomId.value = null
   const b = buildings.value.find(b => b.id === buildingId)
   if (b?.rooms) rooms.value = b.rooms
 }
@@ -221,10 +221,10 @@ const calculateStats = (data: any[]) => {
 // 模拟数据
 const getMockData = () => [
   { id: 1, ticketNumber: 'TK-2026-0001', title: 'A栋电梯故障报修', description: '电梯门无法关闭，存在安全隐患', type: 'Repair', priority: 'High', status: 'Open', creatorName: '王先生', assigneeName: null, createdAt: '2026-04-21 08:30', updatedAt: '2026-04-21 08:30' },
-  { id: 2, ticketNumber: 'TK-2026-0002', title: '门禁卡消磁补办', description: '业主反映门禁卡无法刷卡', type: 'Access', priority: 'Normal', status: 'Processing', creatorName: '李女士', assigneeName: '张师傅', createdAt: '2026-04-21 09:15', updatedAt: '2026-04-21 10:00' },
+  { id: 2, ticketNumber: 'TK-2026-0002', title: '门禁卡消磁补办', description: '业主反映门禁卡无法刷卡', type: 'Access', priority: 'Medium', status: 'Processing', creatorName: '李女士', assigneeName: '张师傅', createdAt: '2026-04-21 09:15', updatedAt: '2026-04-21 10:00' },
   { id: 3, ticketNumber: 'TK-2026-0003', title: '公共区域路灯不亮', description: '夜间路灯熄灭，影响住户出行', type: 'Repair', priority: 'Low', status: 'Resolved', creatorName: '赵先生', assigneeName: '李师傅', createdAt: '2026-04-20 16:20', updatedAt: '2026-04-20 18:30' },
   { id: 4, ticketNumber: 'TK-2026-0004', title: '水管漏水报修', description: 'B栋走廊水管接头处漏水', type: 'Repair', priority: 'High', status: 'Open', creatorName: '张先生', assigneeName: null, createdAt: '2026-04-21 07:45', updatedAt: '2026-04-21 07:45' },
-  { id: 5, ticketNumber: 'TK-2026-0005', title: '监控摄像头遮挡', description: '树枝遮挡了摄像头视野', type: 'Security', priority: 'Normal', status: 'Closed', creatorName: '刘经理', assigneeName: '保安队', createdAt: '2026-04-19 14:00', updatedAt: '2026-04-20 09:00' }
+  { id: 5, ticketNumber: 'TK-2026-0005', title: '监控摄像头遮挡', description: '树枝遮挡了摄像头视野', type: 'Security', priority: 'Medium', status: 'Closed', creatorName: '刘经理', assigneeName: '保安队', createdAt: '2026-04-19 14:00', updatedAt: '2026-04-20 09:00' }
 ]
 
 // 搜索和筛选
@@ -259,10 +259,8 @@ const handleSizeChange = (size: number) => {
 const openCreateDialog = () => {
   dialogTitle.value = '创建工单'
   editingId.value = null
-  selectedAreaId.value = null
-  selectedBuildingId.value = null
-  selectedRoomId.value = null
-  selectedJobTypeIds.value = []
+  // area and building handled by form values
+  selectedJobTypeId.value = null
   buildings.value = []
   rooms.value = []
   form.value = {
@@ -270,14 +268,14 @@ const openCreateDialog = () => {
     title: '',
     description: '',
     type: 'Repair',
-    priority: 'Normal',
+    priority: 'Medium',
     contactName: '',
     contactPhone: '',
     locationId: null,
     areaId: null,
     buildingId: null,
     roomId: null,
-    jobTypeIds: []
+    jobTypeId: null
   }
   dialogVisible.value = true
 }
@@ -286,9 +284,9 @@ const openCreateDialog = () => {
 const handleEdit = async (row: any) => {
   dialogTitle.value = '编辑工单'
   editingId.value = row.id
-  selectedAreaId.value = row.areaId || null
+  form.value.areaId = row.areaId || null
   if (row.areaId) await loadBuildingsForArea(row.areaId)
-  selectedBuildingId.value = row.buildingId || null
+  form.value.buildingId = row.buildingId || null
   if (row.buildingId) await loadRoomsForBuilding(row.buildingId)
   selectedRoomId.value = row.roomId || null
   form.value = {
@@ -315,16 +313,30 @@ watch(() => form.value.ticketTypeId, (newId) => {
   if (!editingId.value && newId) {
     const type = ticketTypes.value.find(t => t.id === newId)
     if (type) form.value.title = type.name
+    // 根据工单类型颜色自动设置优先级
+    if (type?.color) {
+      if (type.color === '#F56C6C') {
+        form.value.priority = 'Urgent'
+      } else if (type.color === '#E6A23C') {
+        form.value.priority = 'High'
+      } else if (type.color === '#409EFF') {
+        form.value.priority = 'Medium'
+      } else if (type.color === '#67C23A' || type.color === '#22C55E') {
+        form.value.priority = 'Low'
+      } else {
+        form.value.priority = 'Medium'
+      }
+    }
   }
 })
 
 // 区域选择
-watch(selectedAreaId, async (newId) => {
+watch(() => form.value.areaId, async (newId) => {
   if (newId) await loadBuildingsForArea(newId)
 })
 
 // 楼栋选择
-watch(selectedBuildingId, async (newId) => {
+watch(() => form.value.buildingId, async (newId) => {
   if (newId) await loadRoomsForBuilding(newId)
 })
 
@@ -342,13 +354,13 @@ const handleSubmit = async () => {
       Priority: form.value.priority || 'Medium',
       ProjectId: currentProject.value?.id || 1,
       TicketTypeId: form.value.ticketTypeId || null,
-      AreaId: selectedAreaId.value || null,
-      BuildingId: selectedBuildingId.value || null,
+      AreaId: form.value.areaId,
+      BuildingId: form.value.buildingId,
       RoomId: selectedRoomId.value || null,
       ContactPersonName: form.value.contactName || null,
       ContactPhone: form.value.contactPhone || null,
       Location: form.value.locationId ? `location_${form.value.locationId}` : null,
-      JobTypeIds: selectedJobTypeIds.value.length ? selectedJobTypeIds.value : null,
+      JobTypeId: form.value.jobTypeId,
     }
     if (editingId.value) {
       await ticketApi.put(`/api/tenant/tickets/${editingId.value}`, payload)
@@ -648,36 +660,44 @@ onMounted(() => {
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="8">
-            <el-form-item label="区域">
-              <el-select v-model="selectedAreaId" placeholder="选择区域" style="width: 100%" clearable>
+            <el-form-item label="区域" prop="areaId">
+              <el-select v-model="form.areaId" placeholder="选择区域" style="width: 100%" clearable>
                 <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="楼栋">
-              <el-select v-model="selectedBuildingId" placeholder="选择楼栋" style="width: 100%" :disabled="!selectedAreaId" clearable>
+            <el-form-item label="楼栋" prop="buildingId">
+              <el-select v-model="form.buildingId" placeholder="选择楼栋" style="width: 100%" :disabled="!form.areaId" clearable>
                 <el-option v-for="b in buildings" :key="b.id" :label="b.name" :value="b.id" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="房号">
-              <el-select v-model="selectedRoomId" placeholder="选择房号" style="width: 100%" :disabled="!selectedBuildingId" clearable>
+              <el-select v-model="form.roomId" placeholder="选择房号" style="width: 100%" :disabled="!form.buildingId" clearable>
                 <el-option v-for="r in rooms" :key="r.id" :label="r.roomNumber" :value="r.id" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="工种">
-          <div v-if="groupedJobTypes.length > 0" class="job-type-groups">
-            <div v-for="group in groupedJobTypes" :key="group.name" class="job-type-group">
-              <div class="job-type-group-title">{{ group.name }}</div>
-              <el-checkbox-group v-model="selectedJobTypeIds">
-                <el-checkbox v-for="jt in group.items" :key="jt.id" :value="jt.id" style="margin-right:12px;margin-bottom:4px;">{{ jt.name }}</el-checkbox>
-              </el-checkbox-group>
-            </div>
-          </div>
+          <el-select
+            v-if="groupedJobTypes.length > 0"
+            v-model="form.jobTypeId"
+            placeholder="请选择工种"
+            style="width: 100%">
+            <el-option-group
+              v-for="group in groupedJobTypes"
+              :key="group.name"
+              :label="group.name">
+              <el-option
+                v-for="jt in group.items"
+                :key="jt.id"
+                :label="jt.name"
+                :value="jt.id" />
+            </el-option-group>
+          </el-select>
           <div v-else style="color:#999;font-size:13px;">请先选择工单类型</div>
         </el-form-item>
         <el-form-item label="工单描述" prop="description">

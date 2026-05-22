@@ -1,15 +1,20 @@
 using MySqlConnector;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace WO.Property.CenterService.Services;
 
 /// <summary>
 /// 项目数据库服务 - 负责创建新项目的数据库和表结构
+/// 支持 Schema 版本控制和增量迁移
 /// </summary>
 public class ProjectDatabaseService
 {
     private readonly string _connectionString;
     private readonly ILogger<ProjectDatabaseService> _logger;
+
+    // 当前标准 Schema 版本
+    private const string CURRENT_SCHEMA_VERSION = "v1.0";
 
     public ProjectDatabaseService(IConfiguration configuration, ILogger<ProjectDatabaseService> logger)
     {
@@ -23,7 +28,7 @@ public class ProjectDatabaseService
     public async Task<(bool Success, string Message)> CreateProjectDatabaseAsync(string projectCode)
     {
         var dbName = $"project_{projectCode.ToLower()}";
-        
+
         _logger.LogInformation("开始创建项目数据库: {DatabaseName}", dbName);
 
         try
@@ -39,6 +44,9 @@ public class ProjectDatabaseService
 
             if (tablesExist)
             {
+                // 4. 记录 Schema 版本
+                await RecordSchemaVersionAsync(dbName, CURRENT_SCHEMA_VERSION);
+
                 _logger.LogInformation("项目数据库 {DatabaseName} 创建成功", dbName);
                 return (true, $"项目数据库 {dbName} 创建成功");
             }
@@ -52,6 +60,246 @@ public class ProjectDatabaseService
             _logger.LogError(ex, "创建项目数据库失败: {DatabaseName}", dbName);
             return (false, $"创建失败: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 升级现有项目数据库到最新 Schema
+    /// </summary>
+    public async Task<(bool Success, string Message, List<string> MigratedTables)> MigrateDatabaseAsync(string projectCode)
+    {
+        var dbName = $"project_{projectCode.ToLower()}";
+        var migratedTables = new List<string>();
+
+        _logger.LogInformation("开始检查并升级项目数据库: {DatabaseName}", dbName);
+
+        try
+        {
+            // 检查数据库是否存在
+            if (!await DatabaseExistsAsync(dbName))
+            {
+                return (false, $"数据库 {dbName} 不存在", migratedTables);
+            }
+
+            // 获取当前数据库的 Schema 版本
+            var currentVersion = await GetCurrentSchemaVersionAsync(dbName);
+
+            if (currentVersion == CURRENT_SCHEMA_VERSION)
+            {
+                _logger.LogInformation("数据库 {DatabaseName} 已是最新版本 {Version}", dbName, currentVersion);
+                return (true, $"数据库已是最新版本 {currentVersion}", migratedTables);
+            }
+
+            // 获取标准 Schema 定义
+            var standardTables = await GetStandardTableDefinitionsAsync();
+
+            // 获取当前数据库的表
+            var existingTables = await GetExistingTablesAsync(dbName);
+
+            // 对比并补齐缺失的表和列
+            await using var conn = new MySqlConnection(_connectionString + $"Database={dbName}");
+            await conn.OpenAsync();
+
+            foreach (var (tableName, columns) in standardTables)
+            {
+                if (existingTables.Contains(tableName))
+                {
+                    // 表存在，检查缺失的列
+                    var existingColumns = await GetExistingColumnsAsync(conn, tableName);
+                    var missingColumns = columns.Where(c => !existingColumns.ContainsKey(c.Key)).ToList();
+
+                    if (missingColumns.Count > 0)
+                    {
+                        _logger.LogInformation("表 {Table} 缺少 {Count} 列，开始补齐", tableName, missingColumns.Count);
+
+                        foreach (KeyValuePair<string, string> col in missingColumns)
+                        {
+                            try
+                            {
+                                var alterSql = $"ALTER TABLE `{tableName}` ADD COLUMN `{col.Key}` {col.Value}";
+                                await using var alterCmd = new MySqlCommand(alterSql, conn);
+                                await alterCmd.ExecuteNonQueryAsync();
+                                _logger.LogInformation("  ✓ 添加列 {Table}.{Column}", tableName, col.Key);
+                            }
+                            catch (MySqlException ex)
+                            {
+                                _logger.LogWarning("添加列失败: {Table}.{Column} - {Error}", tableName, col.Key, ex.Message);
+                            }
+                        }
+
+                        migratedTables.Add($"{tableName} (补列: {missingColumns.Count})");
+                    }
+                }
+                else
+                {
+                    // 表不存在，创建表
+                    _logger.LogInformation("表 {Table} 不存在，需要从初始化脚本执行", tableName);
+                    // 注：完整建表需要完整的 CREATE TABLE 语句，这里仅记录
+                    migratedTables.Add($"{tableName} (缺表，需重建)");
+                }
+            }
+
+            // 记录新版本
+            await RecordSchemaVersionAsync(dbName, CURRENT_SCHEMA_VERSION);
+
+            var summary = migratedTables.Count > 0
+                ? $"已升级，迁移了 {migratedTables.Count} 个对象"
+                : "无需迁移";
+
+            _logger.LogInformation("数据库升级完成: {Summary}", summary);
+            return (true, $"{summary}，版本: {CURRENT_SCHEMA_VERSION}", migratedTables);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "升级项目数据库失败: {DatabaseName}", dbName);
+            return (false, $"升级失败: {ex.Message}", migratedTables);
+        }
+    }
+
+    private async Task RecordSchemaVersionAsync(string dbName, string version)
+    {
+        await using var conn = new MySqlConnection(_connectionString + $"Database={dbName}");
+        await conn.OpenAsync();
+
+        var sql = $"INSERT INTO `_schema_version` (version, description) VALUES ('{version}', 'Migrated to {version}')";
+        await using var cmd = new MySqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+
+        _logger.LogInformation("记录 Schema 版本: {Version}", version);
+    }
+
+    private async Task<string?> GetCurrentSchemaVersionAsync(string dbName)
+    {
+        try
+        {
+            await using var conn = new MySqlConnection(_connectionString + $"Database={dbName}");
+            await conn.OpenAsync();
+
+            // 检查 _schema_version 表是否存在
+            var checkSql = "SHOW TABLES LIKE '_schema_version'";
+            await using var checkCmd = new MySqlCommand(checkSql, conn);
+            await using var reader = await checkCmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return null; // 没有版本记录，说明是旧数据库
+            }
+            reader.Close();
+
+            // 获取最新版本
+            var versionSql = "SELECT version FROM `_schema_version` ORDER BY applied_at DESC LIMIT 1";
+            await using var versionCmd = new MySqlCommand(versionSql, conn);
+            var result = await versionCmd.ExecuteScalarAsync();
+            return result?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<bool> DatabaseExistsAsync(string dbName)
+    {
+        await using var conn = new MySqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        var sql = $"SHOW DATABASES LIKE '{dbName}'";
+        await using var cmd = new MySqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        return await reader.ReadAsync();
+    }
+
+    private async Task<HashSet<string>> GetExistingTablesAsync(string dbName)
+    {
+        await using var conn = new MySqlConnection(_connectionString + $"Database={dbName}");
+        await conn.OpenAsync();
+
+        var tables = new HashSet<string>();
+        var sql = "SHOW TABLES";
+        await using var cmd = new MySqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            tables.Add(reader.GetString(0));
+        }
+        return tables;
+    }
+
+    private async Task<Dictionary<string, string>> GetExistingColumnsAsync(MySqlConnection conn, string tableName)
+    {
+        var columns = new Dictionary<string, string>();
+        var sql = $"SHOW COLUMNS FROM `{tableName}`";
+        await using var cmd = new MySqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            columns[reader.GetString(0)] = reader.GetString(1); // name -> type
+        }
+        return columns;
+    }
+
+    /// <summary>
+    /// 从 canonical-schema.sql 解析标准表定义
+    /// 返回：表名 -> (列名 -> 列定义)
+    /// </summary>
+    private async Task<Dictionary<string, Dictionary<string, string>>> GetStandardTableDefinitionsAsync()
+    {
+        var scriptPath = "/Users/mac/Projects/WO-Property-Management/init-scripts/canonical-schema.sql";
+        var script = await File.ReadAllTextAsync(scriptPath);
+
+        var tables = new Dictionary<string, Dictionary<string, string>>();
+        var currentTable = "";
+        var currentColumns = new Dictionary<string, string>();
+
+        var lines = script.Split('\n');
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+
+            // 匹配 CREATE TABLE
+            var createMatch = Regex.Match(trimmed, @"CREATE TABLE IF NOT EXISTS `([^`]+)`", RegexOptions.IgnoreCase);
+            if (createMatch.Success)
+            {
+                // 保存上一个表
+                if (!string.IsNullOrEmpty(currentTable) && currentColumns.Count > 0)
+                {
+                    tables[currentTable] = currentColumns;
+                }
+
+                currentTable = createMatch.Groups[1].Value;
+                currentColumns = new Dictionary<string, string>();
+                continue;
+            }
+
+            // 在表定义内，匹配列定义
+            if (!string.IsNullOrEmpty(currentTable) && trimmed.StartsWith("`") && trimmed.Contains("` "))
+            {
+                var colMatch = Regex.Match(trimmed, @"`([^`]+)`\s+([A-Za-z0-9(),.'_]+)");
+                if (colMatch.Success)
+                {
+                    var colName = colMatch.Groups[1].Value;
+                    var colDef = colMatch.Groups[2].Value;
+                    currentColumns[colName] = colDef;
+                }
+            }
+
+            // 表定义结束
+            if (currentTable != "" && trimmed == ");")
+            {
+                if (currentColumns.Count > 0)
+                {
+                    tables[currentTable] = currentColumns;
+                }
+                currentTable = "";
+                currentColumns = new Dictionary<string, string>();
+            }
+        }
+
+        // 保存最后一个表
+        if (!string.IsNullOrEmpty(currentTable) && currentColumns.Count > 0)
+        {
+            tables[currentTable] = currentColumns;
+        }
+
+        return tables;
     }
 
     private async Task CreateDatabaseAsync(string dbName)
@@ -68,8 +316,8 @@ public class ProjectDatabaseService
 
     private async Task ExecuteInitScriptAsync(string dbName)
     {
-        var scriptPath = "/Users/mac/Projects/WO-Property-Management/init-scripts/project-init.sql";
-        
+        var scriptPath = "/Users/mac/Projects/WO-Property-Management/init-scripts/canonical-schema.sql";
+
         if (!File.Exists(scriptPath))
         {
             throw new FileNotFoundException($"找不到初始化脚本: {scriptPath}");
@@ -86,6 +334,8 @@ public class ProjectDatabaseService
         await initConn.OpenAsync();
 
         int executedCount = 0;
+        int errorCount = 0;
+
         foreach (var statement in statements)
         {
             if (string.IsNullOrWhiteSpace(statement)) continue;
@@ -102,11 +352,12 @@ public class ProjectDatabaseService
             }
             catch (MySqlException ex)
             {
+                errorCount++;
                 _logger.LogWarning("SQL 执行警告: {Message} | Statement: {Statement}", ex.Message, statement.Substring(0, Math.Min(50, statement.Length)));
             }
         }
 
-        _logger.LogInformation("执行了 {Count} 条 SQL 语句", executedCount);
+        _logger.LogInformation("执行了 {Count} 条 SQL 语句 ({Errors} 个警告)", executedCount, errorCount);
     }
 
     private async Task<bool> VerifyTablesAsync(string dbName)
@@ -120,8 +371,8 @@ public class ProjectDatabaseService
             await useCmd.ExecuteNonQueryAsync();
         }
 
-        var tables = new[] { "tickets", "ticket_types", "areas", "buildings", "rooms", "departments", "persons" };
-        
+        var tables = new[] { "persons", "Tickets", "Areas", "Buildings", "Rooms", "Departments", "Devices" };
+
         foreach (var table in tables)
         {
             var sql = $"SHOW TABLES LIKE '{table}'";
@@ -216,7 +467,7 @@ public class ProjectDatabaseService
     public async Task<(bool Success, string Message)> DeleteProjectDatabaseAsync(string projectCode)
     {
         var dbName = $"project_{projectCode.ToLower()}";
-        
+
         _logger.LogInformation("开始删除项目数据库: {DatabaseName}", dbName);
 
         try

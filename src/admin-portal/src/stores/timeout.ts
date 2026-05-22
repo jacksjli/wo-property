@@ -39,6 +39,19 @@ export const timeoutRoleLabels: Record<StaffRoleType, string> = {
 
 // 颜色说明
 export const colorDescriptions: Record<TicketColor, string> = {
+
+// 优先级 → 超时颜色 映射
+export const priorityToTimeoutColor: Record<string, TicketColor> = {
+  'Urgent': 'red',
+  'High': 'orange',
+  'Medium': 'blue',
+  'Low': 'green'
+}
+
+// 根据优先级获取超时颜色
+export const getTimeoutColorByPriority = (priority: string): TicketColor => {
+  return priorityToTimeoutColor[priority] || 'blue'
+}
   green: '一般',
   blue: '普通',
   orange: '较急',
