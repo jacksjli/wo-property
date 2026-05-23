@@ -360,7 +360,7 @@ const handleSubmit = async () => {
       ContactPersonName: form.value.contactName || null,
       ContactPhone: form.value.contactPhone || null,
       Location: form.value.locationId ? `location_${form.value.locationId}` : null,
-      JobTypeId: form.value.jobTypeId,
+      JobTypeIds: form.value.jobTypeId ? [form.value.jobTypeId] : null,
     }
     if (editingId.value) {
       await ticketApi.put(`/api/tenant/tickets/${editingId.value}`, payload)
