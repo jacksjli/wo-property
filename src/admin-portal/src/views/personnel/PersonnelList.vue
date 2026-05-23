@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, getCurrentInstance } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Refresh, Setting, User, UserFilled, Link, Phone, Postcard, Calendar } from '@element-plus/icons-vue'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
@@ -271,7 +271,8 @@ const handleEdit = async (row: Personnel) => {
 
 // 提交表单
 const handleSubmit = async () => {
-  const $msg = (window as any).ElMessage || ElMessage
+  const instance = getCurrentInstance()
+  const $msg = instance?.appContext.config.globalProperties.$message || ElMessage
   if (!form.value.name?.trim()) { $msg.warning('请输入姓名'); return }
   if (!form.value.phone?.trim()) { $msg.warning('请输入联系电话'); return }
 
