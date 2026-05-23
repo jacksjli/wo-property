@@ -270,7 +270,7 @@ const handleEdit = async (row: Personnel) => {
 }
 
 // 提交表单
-const handleSubmit = async () => {
+const ElMessage = (window as any).ElMessage || ElMessage; const handleSubmit = async () => {
   if (!form.value.name?.trim()) { ElMessage.warning('请输入姓名'); return }
   if (!form.value.phone?.trim()) { ElMessage.warning('请输入联系电话'); return }
 
