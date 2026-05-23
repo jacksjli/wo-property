@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, getCurrentInstance } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Refresh, Setting, User, UserFilled, Link, Phone, Postcard, Calendar } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Refresh, Setting, User, UserFilled, Link, Phone, Postcard, Calendar, Upload, Download } from '@element-plus/icons-vue'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
+import * as XLSX from 'xlsx';
 import { personApi } from '@/api/person'
 import { masterApi } from '@/api/http'
 import { ticketTypeApi } from '@/api/ticketType'
@@ -380,6 +381,104 @@ const handleRemoveBackup = async (personId: number, staffId: number) => {
 }
 
 const getDepartmentName = (id: number) => departments.value.find(d => d.id === id)?.name || '-'
+
+// 批量导入
+const importDialogVisible = ref(false)
+const importLoading = ref(false)
+const importResult = ref<{ success: number; failed: number; skipped: number; errors: string[] } | null>(null)
+
+const handleDownloadTemplate = () => {
+  // 生成导入模板
+  const templateData = [
+    {
+      '姓名': '',
+      '电话': '',
+      '性别': 'male/female/other',
+      '角色': 'operator/supervisor/manager',
+      '工号': '',
+      '部门名称': '',
+      '职位': '',
+      '入职日期': 'YYYY-MM-DD',
+      '工单类型ID': '[1,2]',
+      '专业技能ID': '[9,10]'
+    }
+  ]
+  const ws = XLSX.utils.json_to_sheet(templateData)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '人员导入模板')
+  XLSX.writeFile(wb, '人员导入模板.xlsx')
+}
+
+const handleFileChange = async (file: any) => {
+  if (!file) return
+  importLoading.value = true
+  importResult.value = null
+  
+  try {
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(reader.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+        
+        // 转换数据
+        const rows = jsonData.map((row: any, index: number) => {
+          // 跳过表头
+          if (index === 0 && row['姓名'] === '姓名') return null
+          
+          // 校验必填字段
+          if (!row['姓名'] || !row['电话']) {
+            return { _error: `第${index + 1}行: 姓名和电话为必填字段`, _row: row }
+          }
+          
+          return {
+            name: row['姓名'] || '',
+            phone: row['电话'] || '',
+            gender: row['性别'] || 'male',
+            role: row['角色'] || 'operator',
+            employeeNo: row['工号'] || '',
+            departmentName: row['部门名称'] || '',
+            position: row['职位'] || '',
+            hireDate: row['入职日期'] || null,
+            ticketTypeIds: row['工单类型ID'] || null,
+            specialtyIds: row['专业技能ID'] || null,
+          }
+        }).filter((r: any) => r !== null)
+        
+        // 调用后端导入
+        const res: any = await personApi.importExcel({ rows })
+        if (res.success) {
+          importResult.value = res.data
+          ElMessage.success(\`导入完成: 成功\${res.data.success}条, 跳过\${res.data.skipped}条, 失败\${res.data.failed}条\`)
+          if (res.data.failed > 0) {
+            ElMessage.warning(\`失败原因: \${res.data.errors?.join('; ')}\`)
+          }
+          loadData()
+        } else {
+          ElMessage.error(res.message || '导入失败')
+        }
+      } catch (err: any) {
+        ElMessage.error('解析Excel失败: ' + err.message)
+      } finally {
+        importLoading.value = false
+      }
+    }
+    reader.readAsArrayBuffer(file.raw || file)
+  } catch (err: any) {
+    ElMessage.error('读取文件失败: ' + err.message)
+    importLoading.value = false
+  }
+}
+
+const openImportDialog = () => {
+  importResult.value = null
+  importDialogVisible.value = true
+}
+
+
 const handleRefresh = () => { loadData(); ElMessage.success('已刷新') }
 const handleReset = () => { filterRole.value = ''; filterDepartment.value = ''; filterStatus.value = '' }
 const getStatusType = (status: PersonnelStatus) => {
@@ -405,6 +504,7 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
             <el-button @click="handleRefresh">
               <el-icon><Refresh /></el-icon> 刷新
             </el-button>
+            <el-button @click="openImportDialog"><el-icon><Upload /></el-icon> 批量导入</el-button>
             <el-button type="primary" @click="handleAdd">
               <el-icon><Plus /></el-icon> 新增人员
             </el-button>
@@ -575,7 +675,56 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
     <!-- 字段配置对话框 -->
     <FieldConfigDialog ref="fieldDialogRef" module="personnel" module-name="人员管理" @update="refreshFields" />
   </div>
-</template>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog v-model="importDialogVisible" title="批量导入人员" width="600px">
+      <div style="margin-bottom: 20px;">
+        <h4>导入说明：</h4>
+        <ul style="color: #666; font-size: 13px; line-height: 1.8;">
+          <li>请先下载导入模板，按模板格式填写数据</li>
+          <li>姓名和电话为必填字段，其他为选填</li>
+          <li>手机号重复的数据会自动覆盖</li>
+          <li>必填字段为空的数据会自动跳过</li>
+        </ul>
+        <el-button type="primary" link @click="handleDownloadTemplate" style="margin: 10px 0;">
+          <el-icon><Download /></el-icon> 下载导入模板
+        </el-button>
+      </div>
+      
+      <el-upload
+        ref="uploadRef"
+        :auto-upload="false"
+        :limit="1"
+        accept=".xlsx,.xls"
+        :on-change="handleFileChange"
+        style="margin-bottom: 20px;">
+        <el-button type="default">选择Excel文件</el-button>
+      </el-upload>
+      
+      <el-divider v-if="importResult" />
+      
+      <div v-if="importResult" style="background: #f5f7fa; padding: 15px; border-radius: 4px;">
+        <h4>导入结果：</h4>
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="成功">{{ importResult.success }} 条</el-descriptions-item>
+          <el-descriptions-item label="跳过">{{ importResult.skipped }} 条</el-descriptions-item>
+          <el-descriptions-item label="失败">{{ importResult.failed }} 条</el-descriptions-item>
+        </el-descriptions>
+        <div v-if="importResult.errors?.length" style="margin-top: 10px;">
+          <el-alert type="error" :closable="false">
+            <template #title>
+              失败原因：{{ importResult.errors.join('; ') }}
+            </template>
+          </el-alert>
+        </div>
+      </div>
+      
+      <template #footer>
+        <el-button @click="importDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+    
+    </template>
 
 <style scoped>
 .personnel-page { width: 100%; }

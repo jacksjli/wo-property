@@ -307,8 +307,91 @@ public class TenantPersonsController : ControllerBase
         }
     }
 
-    // DELETE /api/tenant/persons/persons/{id}
-    [HttpDelete("{id}")]
+    
+    // POST /api/tenant/persons/import
+    [HttpPost("import")]
+        public async Task<IActionResult> ImportPersons([FromBody] ImportPersonsRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            int successCount = 0, failedCount = 0, skippedCount = 0;
+            var errors = new List<string>();
+            
+            foreach (var row in request.Rows)
+            {
+                try
+                {
+                    // 校验必填字段
+                    if (string.IsNullOrWhiteSpace(row.Name) || string.IsNullOrWhiteSpace(row.Phone))
+                    {
+                        skippedCount++;
+                        errors.Add($"第{successCount + failedCount + skippedCount}行: 姓名或电话为空");
+                        continue;
+                    }
+                    
+                    // 检查手机号是否已存在
+                    var existing = await db.Personnel.FirstOrDefaultAsync(p => p.Phone == row.Phone && p.Status != "已删除");
+                    
+                    if (existing != null)
+                    {
+                        // 覆盖更新
+                        existing.Name = row.Name;
+                        existing.Gender = row.Gender ?? existing.Gender;
+                        existing.Role = row.Role ?? existing.Role;
+                        existing.EmployeeNo = row.EmployeeNo ?? existing.EmployeeNo;
+                        existing.DepartmentName = row.DepartmentName ?? existing.DepartmentName;
+                        existing.Position = row.Position ?? existing.Position;
+                        existing.TicketTypeIds = row.TicketTypeIds ?? existing.TicketTypeIds;
+                        existing.SpecialtyIds = row.SpecialtyIds ?? existing.SpecialtyIds;
+                        existing.UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        // 新增
+                        DateTime? hireDate = null;
+                        if (!string.IsNullOrEmpty(row.HireDate) && DateTime.TryParse(row.HireDate, out var hd))
+                            hireDate = hd;
+                        
+                        var personnel = new Personnel
+                        {
+                            Name = row.Name,
+                            Phone = row.Phone,
+                            Gender = row.Gender ?? "male",
+                            Role = row.Role ?? "operator",
+                            EmployeeNo = row.EmployeeNo ?? "",
+                            DepartmentName = row.DepartmentName ?? "",
+                            Position = row.Position ?? "",
+                            HireDate = hireDate,
+                            TicketTypeIds = row.TicketTypeIds,
+                            SpecialtyIds = row.SpecialtyIds,
+                            Status = row.Status ?? "probation",
+                            IsSupervisor = false,
+                            MaxConcurrentTickets = 5,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        db.Personnel.Add(personnel);
+                    }
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    failedCount++;
+                    errors.Add($"第{successCount + failedCount}行: {ex.Message}");
+                }
+            }
+            
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, data = new { success = successCount, failed = failedCount, skipped = skippedCount, errors = errors.Take(50).ToList() } });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ImportPersons failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
     public async Task<IActionResult> DeletePerson(int id)
     {
         try

@@ -40,6 +40,16 @@ export const personApi = {
   delete(id: number) {
     return httpClient.delete(`/api/tenant/persons/${id}`)
   },
+
+  // 批量导入人员
+  importExcel(data: { rows: any[] }) {
+    return httpClient.post('/api/tenant/persons/import', data)
+  },
+
+  // 下载导入模板
+  downloadTemplate() {
+    return httpClient.get('/api/tenant/persons/template', { responseType: 'blob' })
+  },
 }
 
 export default personApi
