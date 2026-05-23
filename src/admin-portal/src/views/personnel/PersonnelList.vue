@@ -273,7 +273,6 @@ const handleEdit = async (row: Personnel) => {
 const handleSubmit = async () => {
   const $msg = (window as any).ElMessage || ElMessage
   if (!form.value.name?.trim()) { $msg.warning('请输入姓名'); return }
-  const $msg = (window as any).ElMessage || ElMessage
   if (!form.value.phone?.trim()) { $msg.warning('请输入联系电话'); return }
 
 
