@@ -271,8 +271,10 @@ const handleEdit = async (row: Personnel) => {
 
 // 提交表单
 const handleSubmit = async () => {
-  if (!form.value.name?.trim()) { ElMessage.warning('请输入姓名'); return }
-  if (!form.value.phone?.trim()) { ElMessage.warning('请输入联系电话'); return }
+  const $msg = (window as any).ElMessage || ElMessage
+  if (!form.value.name?.trim()) { $msg.warning('请输入姓名'); return }
+  const $msg = (window as any).ElMessage || ElMessage
+  if (!form.value.phone?.trim()) { $msg.warning('请输入联系电话'); return }
 
 
   const department = departments.value.find(d => d.id === form.value.departmentId)
@@ -314,14 +316,14 @@ const handleSubmit = async () => {
 
     if (editingId.value) {
       await personApi.update(editingId.value, payload)
-      ElMessage.success('更新成功')
+      $msg.success('更新成功')
     } else {
       await personApi.create(payload)
-      ElMessage.success('添加成功')
+      $msg.success('添加成功')
     }
     dialogVisible.value = false
     loadData()
-  } catch (e: any) { ElMessage.error(e.message || '操作失败') }
+  } catch (e: any) { $msg.error(e.message || '操作失败') }
 }
 
 // 删除
