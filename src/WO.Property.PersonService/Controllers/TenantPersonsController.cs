@@ -48,6 +48,8 @@ public class TenantPersonsController : ControllerBase
                 query = query.Where(p => p.Role == role);
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(p => p.Status == status);
+            else
+                query = query.Where(p => p.Status != "已删除");
 
             var total = await query.CountAsync();
             var items = await query
