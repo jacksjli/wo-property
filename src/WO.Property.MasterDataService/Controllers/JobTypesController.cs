@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using WO.Property.MasterDataService.Models;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -128,6 +129,71 @@ public class JobTypesController : ControllerBase
         _logger.LogInformation("删除工种类型: {Id}", id);
         return Ok(new { success = true, message = "工种类型已删除" });
     }
+
+    /// <summary>
+    /// 批量导入工种
+    /// </summary>
+    [HttpPost("import")]
+    public async Task<IActionResult> ImportJobTypes([FromBody] ImportJobTypesRequest req)
+    {
+        var result = new ImportJobTypesResult();
+        foreach (var row in req.Rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Name))
+            {
+                result.Skipped++;
+                continue;
+            }
+            try
+            {
+                var existCmd = new MySqlCommand("SELECT Id FROM JobTypes WHERE Name = @name", _db);
+                existCmd.Parameters.AddWithValue("@name", row.Name);
+                var existsId = await existCmd.ExecuteScalarAsync();
+                if (existsId != null && existsId != DBNull.Value)
+                {
+                    var updateSql = @"UPDATE JobTypes SET Code = @code, Category = @category,
+                        Description = @description, ticket_type_id = @ticketTypeId,
+                        Status = @status, SortOrder = @sortOrder, UpdatedAt = @updatedAt
+                        WHERE Name = @name";
+                    var updateCmd = new MySqlCommand(updateSql, _db);
+                    updateCmd.Parameters.AddWithValue("@code", ToCode(row.Name));
+                    updateCmd.Parameters.AddWithValue("@name", row.Name);
+                    updateCmd.Parameters.AddWithValue("@category", (object)row.Category ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@description", (object)row.Description ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@ticketTypeId", row.TicketTypeId > 0 ? row.TicketTypeId : (object)DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@status", "Active");
+                    updateCmd.Parameters.AddWithValue("@sortOrder", row.SortOrder);
+                    updateCmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
+                    await updateCmd.ExecuteNonQueryAsync();
+                    result.Success++;
+                }
+                else
+                {
+                    var insertSql = @"INSERT INTO JobTypes (Name, Code, Category, Description, ticket_type_id, Status, SortOrder)
+                        VALUES (@name, @code, @category, @description, @ticketTypeId, @status, @sortOrder)";
+                    var insertCmd = new MySqlCommand(insertSql, _db);
+                    insertCmd.Parameters.AddWithValue("@name", row.Name);
+                    insertCmd.Parameters.AddWithValue("@code", ToCode(row.Name));
+                    insertCmd.Parameters.AddWithValue("@category", (object)row.Category ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@description", (object)row.Description ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@ticketTypeId", row.TicketTypeId > 0 ? row.TicketTypeId : (object)DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@status", "Active");
+                    insertCmd.Parameters.AddWithValue("@sortOrder", row.SortOrder);
+                    await insertCmd.ExecuteNonQueryAsync();
+                    result.Success++;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Failed++;
+                result.Errors.Add($"「{row.Name}」: {ex.Message}");
+            }
+        }
+        return Ok(new { success = true, data = result });
+    }
+
+    private static string ToCode(string name) =>
+        string.Join("", name.Where(char.IsLetterOrDigit)).ToLowerInvariant();
 
     private static JobTypeItem MapJobType(MySqlDataReader r)
     {

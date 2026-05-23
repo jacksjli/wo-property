@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using WO.Property.MasterDataService.Models;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -127,6 +128,94 @@ public class RoomsController : ControllerBase
             return NotFound(new { success = false, message = "房间不存在" });
         _logger.LogInformation("删除房间: {Id}", id);
         return Ok(new { success = true, message = "房间已删除" });
+    }
+
+    /// <summary>批量导入房号</summary>
+    [HttpPost("import")]
+    public async Task<IActionResult> ImportRooms([FromBody] ImportRoomsRequest req)
+    {
+        var result = new ImportResult();
+        foreach (var row in req.Rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.RoomNumber))
+            {
+                result.Skipped++;
+                result.Errors.Add($"跳过的行：房号名称为空");
+                continue;
+            }
+
+            try
+            {
+                // 检查是否已存在（按 BuildingId + RoomNumber 唯一判断）
+                int? existingId = null;
+                if (row.BuildingId.HasValue)
+                {
+                    using var checkCmd = new MySqlCommand("SELECT Id FROM Rooms WHERE BuildingId = @buildingId AND RoomNumber = @roomNumber LIMIT 1", _db);
+                    checkCmd.Parameters.AddWithValue("@buildingId", row.BuildingId.Value);
+                    checkCmd.Parameters.AddWithValue("@roomNumber", row.RoomNumber);
+                    using var reader = await checkCmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                        existingId = Convert.ToInt32(reader["Id"]);
+                    reader.Close();
+                }
+                else
+                {
+                    using var checkCmd = new MySqlCommand("SELECT Id FROM Rooms WHERE RoomNumber = @roomNumber LIMIT 1", _db);
+                    checkCmd.Parameters.AddWithValue("@roomNumber", row.RoomNumber);
+                    using var reader = await checkCmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                        existingId = Convert.ToInt32(reader["Id"]);
+                    reader.Close();
+                }
+
+                if (existingId.HasValue)
+                {
+                    // 覆盖更新
+                    var updates = new List<string> { "UpdatedAt = @updatedAt" };
+                    if (row.BuildingId.HasValue) updates.Add("BuildingId = @buildingId");
+                    if (row.Floor != null) updates.Add("Floor = @floor");
+                    if (row.Unit != null) updates.Add("Unit = @unit");
+                    if (!string.IsNullOrEmpty(row.RoomType)) updates.Add("RoomType = @roomType");
+                    if (row.Area.HasValue) updates.Add("Area = @area");
+
+                    using var updateCmd = new MySqlCommand($"UPDATE Rooms SET {string.Join(", ", updates)} WHERE Id = @id", _db);
+                    updateCmd.Parameters.AddWithValue("@id", existingId.Value);
+                    updateCmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
+                    if (row.BuildingId.HasValue) updateCmd.Parameters.AddWithValue("@buildingId", row.BuildingId.Value);
+                    if (row.Floor != null) updateCmd.Parameters.AddWithValue("@floor", row.Floor);
+                    if (row.Unit != null) updateCmd.Parameters.AddWithValue("@unit", row.Unit);
+                    if (!string.IsNullOrEmpty(row.RoomType)) updateCmd.Parameters.AddWithValue("@roomType", row.RoomType);
+                    if (row.Area.HasValue) updateCmd.Parameters.AddWithValue("@area", row.Area.Value);
+                    await updateCmd.ExecuteNonQueryAsync();
+                    _logger.LogInformation("覆盖房号: {RoomNumber} (Id={Id})", row.RoomNumber, existingId.Value);
+                }
+                else
+                {
+                    // 新增
+                    using var insertCmd = new MySqlCommand(@"
+                        INSERT INTO Rooms (BuildingId, Floor, Unit, RoomNumber, RoomType, Area, Status)
+                        VALUES (@BuildingId, @Floor, @Unit, @RoomNumber, @RoomType, @Area, @Status)", _db);
+                    insertCmd.Parameters.AddWithValue("@BuildingId", row.BuildingId.HasValue ? (object)row.BuildingId.Value : DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@Floor", (object)row.Floor ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@Unit", (object)row.Unit ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@RoomNumber", row.RoomNumber);
+                    insertCmd.Parameters.AddWithValue("@RoomType", (object)row.RoomType ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@Area", row.Area.HasValue ? (object)row.Area.Value : DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@Status", "Active");
+                    await insertCmd.ExecuteNonQueryAsync();
+                    _logger.LogInformation("导入房号: {RoomNumber}", row.RoomNumber);
+                }
+
+                result.Success++;
+            }
+            catch (Exception ex)
+            {
+                result.Failed++;
+                result.Errors.Add($"房号「{row.RoomNumber}」失败：{ex.Message}");
+            }
+        }
+
+        return Ok(new { success = true, data = result });
     }
 
     private static RoomItem MapRoom(MySqlDataReader r) => new()

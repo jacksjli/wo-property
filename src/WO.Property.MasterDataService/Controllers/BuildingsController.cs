@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using WO.Property.MasterDataService.DTOs;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -116,6 +117,131 @@ public class BuildingsController : ControllerBase
         _logger.LogInformation("更新楼栋: {Id}", id);
         return Ok(new { success = true, message = "楼栋更新成功" });
     }
+
+    /// <summary>批量导入楼栋</summary>
+    [HttpPost("import")]
+    public async Task<IActionResult> ImportBuildings([FromBody] ImportBuildingsRequest req)
+    {
+        if (req.Rows == null || req.Rows.Count == 0)
+            return BadRequest(new { success = false, message = "没有数据" });
+
+        var successCount = 0;
+        var failedCount = 0;
+        var skippedCount = 0;
+        var errors = new List<string>();
+
+        foreach (var row in req.Rows)
+        {
+            try
+            {
+                // 必填字段校验
+                if (string.IsNullOrWhiteSpace(row.Name))
+                {
+                    skippedCount++;
+                    errors.Add($"行 Skip: 楼栋名称为空");
+                    continue;
+                }
+
+                // 生成编码（名称转拼音首字母）
+                var code = toPinyinCode(row.Name);
+                if (string.IsNullOrWhiteSpace(code)) code = Guid.NewGuid().ToString("N")[..8];
+
+                // 检查是否已存在（按名称查重，名称相同则覆盖）
+                using var checkCmd = new MySqlCommand("SELECT Id FROM Buildings WHERE Name = @name", _db);
+                checkCmd.Parameters.AddWithValue("@name", row.Name);
+                var existsId = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+
+                if (existsId > 0)
+                {
+                    // 更新
+                    var sql = @"UPDATE Buildings SET Area = @area, TotalFloors = @totalFloors,
+                               TotalUnits = @totalUnits, Description = @description,
+                               UpdatedAt = @updatedAt WHERE Id = @id";
+                    using var updateCmd = new MySqlCommand(sql, _db);
+                    updateCmd.Parameters.AddWithValue("@id", existsId);
+                    updateCmd.Parameters.AddWithValue("@area", (object)row.Area ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@totalFloors", row.TotalFloors ?? 1);
+                    updateCmd.Parameters.AddWithValue("@totalUnits", row.TotalUnits ?? 1);
+                    updateCmd.Parameters.AddWithValue("@description", (object)row.Description ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
+                    await updateCmd.ExecuteNonQueryAsync();
+                }
+                else
+                {
+                    // 新增
+                    var sql = @"INSERT INTO Buildings (Name, Code, Area, TotalFloors, TotalUnits, Description, Status)
+                               VALUES (@name, @code, @area, @totalFloors, @totalUnits, @description, 'Active');
+                               SELECT LAST_INSERT_ID();";
+                    using var insertCmd = new MySqlCommand(sql, _db);
+                    insertCmd.Parameters.AddWithValue("@name", row.Name);
+                    insertCmd.Parameters.AddWithValue("@code", code);
+                    insertCmd.Parameters.AddWithValue("@area", (object)row.Area ?? DBNull.Value);
+                    insertCmd.Parameters.AddWithValue("@totalFloors", row.TotalFloors ?? 1);
+                    insertCmd.Parameters.AddWithValue("@totalUnits", row.TotalUnits ?? 1);
+                    insertCmd.Parameters.AddWithValue("@description", (object)row.Description ?? DBNull.Value);
+                    await insertCmd.ExecuteScalarAsync();
+                }
+                successCount++;
+            }
+            catch (Exception ex)
+            {
+                failedCount++;
+                errors.Add($"行 Error: {row.Name ?? "(空)"} - {ex.Message}");
+            }
+        }
+
+        _logger.LogInformation("批量导入楼栋完成: 成功{SuccessCount}, 失败{FailedCount}, 跳过{SkippedCount}", successCount, failedCount, skippedCount);
+        return Ok(new ImportBuildingsResponse
+        {
+            Success = failedCount == 0,
+            SuccessCount = successCount,
+            FailedCount = failedCount,
+            SkippedCount = skippedCount,
+            Errors = errors
+        });
+    }
+
+    private static string toPinyinCode(string name)
+    {
+        // 简单实现：取每个汉字拼音首字母，非汉字保留原字符
+        // 这里用简化的方式，只取第一音节的首字母
+        if (string.IsNullOrEmpty(name)) return "";
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in name)
+        {
+            if (c >= '0' && c <= '9') sb.Append(c);
+            else if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') sb.Append(char.ToUpper(c));
+            else if (c >= 0x4e00 && c <= 0x9fff)
+            {
+                // 常见汉字拼音首字母映射（简化版）
+                var py = chinesePinyinMap.GetValueOrDefault(c, c.ToString());
+                if (!string.IsNullOrEmpty(py)) sb.Append(py[0]);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static readonly Dictionary<char, string> chinesePinyinMap = new()
+    {
+        {'一',"yi"},{'二',"er"},{'三',"san"},{'四',"si"},{'五',"wu"},{'六',"liu"},
+        {'七',"qi"},{'八',"ba"},{'九',"jiu"},{'十',"shi"},
+        {'亚',"ya"},{'奥',"ao"},{'北',"bei"},{'碧',"bi"},{'滨',"bin"},
+        {'彩',"cai"},{'翠',"cui"},{'大',"da"},{'德',"de"},{'东',"dong"},
+        {'福',"fu"},{'港',"gang"},{'光',"guang"},{'桂',"gui"},{'国',"guo"},
+        {'海',"hai"},{'花',"hua"},{'华',"hua"},{'黄',"huang"},
+        {'佳',"jia"},{'金',"jin"},{'锦',"jin"},{'京',"jing"},{'景',"jing"},
+        {'康',"kang"},{'科',"ke"},{'兰',"lan"},{'蓝',"lan"},{'朗',"lang"},
+        {'里',"li"},{'丽',"li"},{'连',"lian"},{'龙',"long"},{'绿',"lv"},
+        {'梅',"mei"},{'美',"mei"},{'南',"nan"},{'宁',"ning"},
+        {'平',"ping"},{'栖',"qi"},{'前',"qian"},{'青',"qing"},{'清',"qing"},
+        {'仁',"ren"},{'瑞',"rui"},{'山',"shan"},{'上',"shang"},{'盛',"sheng"},
+        {'世',"shi"},{'树',"shu"},{'松',"song"},{'苏',"su"},
+        {'泰',"tai"},{'天',"tian"},{'通',"tong"},{'万',"wan"},
+        {'文',"wen"},{'西',"xi"},{'厦',"xia"},{'新',"xin"},{'星',"xing"},
+        {'学',"xue"},{'雅',"ya"},{'阳',"yang"},{'银',"yin"},{'英',"ying"},
+        {'友',"you"},{'园',"yuan"},{'月',"yue"},{'悦',"yue"},
+        {'在',"zai"},{'振',"zhen"},{'中',"zhong"},{'紫',"zi"},
+    };
 
     /// <summary>删除楼栋（自动清除关联）</summary>
     [HttpDelete("{id}")]

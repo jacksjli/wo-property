@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using WO.Property.MasterDataService.Models;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -119,6 +120,60 @@ public class AreasController : ControllerBase
             return NotFound(new { success = false, message = "区域不存在" });
         _logger.LogInformation("删除区域: {Id}", id);
         return Ok(new { success = true, message = "区域已删除" });
+    }
+
+    [HttpPost("import")]
+    public async Task<IActionResult> ImportAreas([FromBody] ImportAreasRequest req)
+    {
+        var result = new ImportAreasResult();
+        foreach (var row in req.Rows)
+        {
+            // 跳过无效行
+            if (string.IsNullOrWhiteSpace(row.Name))
+            {
+                result.Skipped++;
+                result.Errors.Add($"第{req.Rows.IndexOf(row) + 1}行: 区域名称不能为空");
+                continue;
+            }
+
+            // 检查是否已存在（按名称匹配，覆盖）
+            using var checkCmd = new MySqlCommand("SELECT Id FROM Areas WHERE Name = @name", _db);
+            checkCmd.Parameters.AddWithValue("@name", row.Name);
+            var existingId = await checkCmd.ExecuteScalarAsync();
+
+
+            if (existingId != null)
+            {
+                // 覆盖更新
+                var updates = new List<string> { "Name = @name", "Description = @desc", "SortOrder = @sort", "UpdatedAt = @updatedAt" };
+                using var updateCmd = new MySqlCommand($"UPDATE Areas SET {string.Join(", ", updates)} WHERE Id = @id", _db);
+                updateCmd.Parameters.AddWithValue("@id", Convert.ToInt32(existingId));
+                updateCmd.Parameters.AddWithValue("@name", row.Name);
+                updateCmd.Parameters.AddWithValue("@desc", string.IsNullOrEmpty(row.Description) ? DBNull.Value : row.Description);
+                updateCmd.Parameters.AddWithValue("@sort", row.Sort);
+                updateCmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
+                await updateCmd.ExecuteNonQueryAsync();
+                result.Success++;
+            }
+            else
+            {
+                // 新增
+                var sql = @"INSERT INTO Areas (Name, Code, Description, Region, Status, SortOrder)
+                            VALUES (@Name, @Code, @Description, @Region, 'Active', @SortOrder);
+                            SELECT LAST_INSERT_ID();";
+                using var insertCmd = new MySqlCommand(sql, _db);
+                insertCmd.Parameters.AddWithValue("@Name", row.Name);
+                insertCmd.Parameters.AddWithValue("@Code", "");
+                insertCmd.Parameters.AddWithValue("@Description", string.IsNullOrEmpty(row.Description) ? DBNull.Value : row.Description);
+                insertCmd.Parameters.AddWithValue("@Region", row.ParentId.HasValue ? row.ParentId.Value.ToString() : DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@SortOrder", row.Sort);
+                await insertCmd.ExecuteScalarAsync();
+                result.Success++;
+            }
+        }
+
+        _logger.LogInformation("批量导入区域: 成功{Success}条, 失败{Failed}条, 跳过{Skipped}条", result.Success, result.Failed, result.Skipped);
+        return Ok(new { success = true, data = result });
     }
 
     private static AreaItem MapArea(MySqlDataReader r) => new()

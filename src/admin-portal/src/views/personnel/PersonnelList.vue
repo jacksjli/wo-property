@@ -452,9 +452,9 @@ const handleFileChange = async (file: any) => {
         const res: any = await personApi.importExcel({ rows })
         if (res.success) {
           importResult.value = res.data
-          ElMessage.success(\`导入完成: 成功\${res.data.success}条, 跳过\${res.data.skipped}条, 失败\${res.data.failed}条\`)
+          ElMessage.success(`导入完成: 成功${res.data.success}条, 跳过${res.data.skipped}条, 失败${res.data.failed}条`)
           if (res.data.failed > 0) {
-            ElMessage.warning(\`失败原因: \${res.data.errors?.join('; ')}\`)
+            ElMessage.warning(`失败原因: ${res.data.errors?.join('; ')}`)
           }
           loadData()
         } else {

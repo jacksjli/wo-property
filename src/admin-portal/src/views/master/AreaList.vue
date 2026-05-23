@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Refresh } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Refresh, Upload, Download } from '@element-plus/icons-vue'
 import { masterApi } from '@/api/http'
+import * as XLSX from 'xlsx';
 import { toPinyinCode } from '@/utils/pinyin'
 
 const areas = ref<any[]>([])
@@ -11,6 +12,76 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const currentId = ref<number | null>(null)
 const submitting = ref(false)
+
+// 批量导入
+const importDialogVisible = ref(false)
+const importLoading = ref(false)
+const importResult = ref<{ success: number; failed: number; skipped: number; errors: string[] } | null>(null)
+
+
+const handleDownloadTemplate = () => {
+  const templateData = [
+    {
+      '区域名称': '',
+      '上级区域ID': '',
+      '描述': '',
+      '排序': 0
+    }
+  ]
+  const ws = XLSX.utils.json_to_sheet(templateData)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '区域导入模板')
+  XLSX.writeFile(wb, '区域导入模板.xlsx')
+}
+
+const handleFileChange = async (file: any) => {
+  if (!file) return
+  importLoading.value = true
+  importResult.value = null
+  try {
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(reader.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+        const rows = jsonData.map((row: any, index: number) => {
+          if (index === 0 && row['区域名称'] === '区域名称') return null
+          if (!row['区域名称']) {
+            return { _error: `第${index + 1}行: 区域名称为必填字段`, _row: row }
+          }
+          return {
+            name: row['区域名称'] || '',
+            parentId: row['上级区域ID'] || null,
+            description: row['描述'] || '',
+            sort: row['排序'] || 0,
+          }
+        }).filter((r: any) => r !== null)
+        const res: any = await masterApi.importAreas({ rows })
+        if (res.success) {
+          importResult.value = res.data
+          ElMessage.success(`导入完成: 成功${res.data.success}条, 跳过${res.data.skipped}条, 失败${res.data.failed}条`)
+          if (res.data.failed > 0) {
+            ElMessage.warning(`失败原因: ${res.data.errors?.join('; ')}`)
+          }
+          loadData()
+        } else {
+          ElMessage.error(res.message || '导入失败')
+        }
+      } catch (err: any) { ElMessage.error('解析Excel失败: ' + err.message) }
+      finally { importLoading.value = false }
+    }
+    reader.readAsArrayBuffer(file.raw || file)
+  } catch (err: any) { ElMessage.error('读取文件失败: ' + err.message); importLoading.value = false }
+}
+
+const openImportDialog = () => {
+  importResult.value = null
+  importDialogVisible.value = true
+}
+
 
 const form = ref({
   code: '',
@@ -85,6 +156,7 @@ const handleDelete = async (row: any) => {
     <div class="page-header">
       <h2>区域管理</h2>
       <el-button type="primary" :icon="Plus" @click="openCreate">新增区域</el-button>
+      <el-button @click="openImportDialog"><el-icon><Upload /></el-icon> 批量导入</el-button>
     </div>
 
     <div class="filter-bar">
@@ -125,6 +197,46 @@ const handleDelete = async (row: any) => {
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSave" :loading="submitting">确认</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 批量导入区域对话框 -->
+    <el-dialog v-model="importDialogVisible" title="批量导入区域" width="600px">
+      <div style="margin-bottom: 20px;">
+        <h4>导入说明：</h4>
+        <ul style="color: #666; font-size: 13px; line-height: 1.8;">
+          <li>请先下载导入模板，按模板格式填写数据</li>
+          <li>区域名称为必填字段，其他为选填</li>
+          <li>名称重复的区域会自动覆盖</li>
+          <li>必填字段为空的数据会自动跳过</li>
+        </ul>
+        <el-button type="primary" link @click="handleDownloadTemplate" style="margin: 10px 0;">
+          <el-icon><Download /></el-icon> 下载导入模板
+        </el-button>
+      </div>
+      <el-upload
+        ref="uploadRef"
+        :auto-upload="false"
+        :limit="1"
+        accept=".xlsx,.xls"
+        :on-change="handleFileChange"
+        style="margin-bottom: 20px;">
+        <el-button type="default">选择Excel文件</el-button>
+      </el-upload>
+      <el-divider v-if="importResult" />
+      <div v-if="importResult" style="background: #f5f7fa; padding: 15px; border-radius: 4px;">
+        <h4>导入结果：</h4>
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="成功">{{ importResult.success }} 条</el-descriptions-item>
+          <el-descriptions-item label="跳过">{{ importResult.skipped }} 条</el-descriptions-item>
+          <el-descriptions-item label="失败">{{ importResult.failed }} 条</el-descriptions-item>
+        </el-descriptions>
+        <div v-if="importResult.errors?.length" style="margin-top: 10px;">
+          <el-alert type="error" :closable="false">
+            <template #title>失败原因：{{ importResult.errors.join('; ') }}</template>
+          </el-alert>
+        </div>
+      </div>
+      <template #footer><el-button @click="importDialogVisible = false">关闭</el-button></template>
     </el-dialog>
   </div>
 </template>

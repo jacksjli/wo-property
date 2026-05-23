@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Refresh } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Refresh, Upload, Download } from '@element-plus/icons-vue'
 import { masterApi } from '@/api/http'
+import * as XLSX from 'xlsx'
 
 const rooms = ref<any[]>([])
 const buildings = ref<any[]>([])
@@ -12,6 +13,11 @@ const isEdit = ref(false)
 const currentId = ref<number | null>(null)
 const submitting = ref(false)
 const filterBuildingId = ref<number | null>(null)
+
+// 导入相关
+const importDialogVisible = ref(false)
+const importLoading = ref(false)
+const importResult = ref<{ success: number; failed: number; skipped: number; errors: string[] } | null>(null)
 
 const form = ref({
   buildingId: null as number | null,
@@ -116,6 +122,61 @@ const getStatusType = (status: string) => {
 const getStatusText = (status: string) => {
   return status === 'Active' ? '启用' : '停用'
 }
+
+// 下载导入模板
+const handleDownloadTemplate = () => {
+  const data = [
+    { '房号名称（必填）': '', '所属楼栋ID': '', '楼层': '', '单元': '', '建筑面积': '', '使用面积': '', '描述': '' },
+    { '房号名称（必填）': '101', '所属楼栋ID': '1', '楼层': '1', '单元': '1', '建筑面积': '120', '使用面积': '100', '描述': '示例房号' }
+  ]
+  const ws = XLSX.utils.json_to_sheet(data)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '房号导入模板')
+  XLSX.writeFile(wb, '房号导入模板.xlsx')
+}
+
+// 打开导入弹窗
+const openImportDialog = () => {
+  importResult.value = null
+  importDialogVisible.value = true
+}
+
+// 文件选择
+const handleFileChange = async (uploadFile: any) => {
+  const file = uploadFile.raw
+  if (!file) return
+  importLoading.value = true
+  importResult.value = null
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+    const sheetName = workbook.SheetNames[0]
+    const sheet = workbook.Sheets[sheetName]
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet)
+
+    const mappedRows = rows.map((r: any) => ({
+      roomNumber: r['房号名称（必填）'] || '',
+      buildingId: r['所属楼栋ID'] ? Number(r['所属楼栋ID']) : null,
+      floor: r['楼层'] || '',
+      unit: r['单元'] || '',
+      area: r['建筑面积'] ? Number(r['建筑面积']) : null,
+      useArea: r['使用面积'] ? Number(r['使用面积']) : null,
+      description: r['描述'] || ''
+    }))
+
+    const res: any = await masterApi.importRooms({ rows: mappedRows })
+    if (res.success) {
+      importResult.value = res.data
+      ElMessage.success(`导入完成：成功 ${res.data.success}，失败 ${res.data.failed}，跳过 ${res.data.skipped}`)
+    } else {
+      ElMessage.error(res.message || '导入失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '解析文件失败')
+  } finally {
+    importLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -123,6 +184,7 @@ const getStatusText = (status: string) => {
     <div class="page-header">
       <h2>房号管理</h2>
       <el-button type="primary" :icon="Plus" @click="openCreate">新增房号</el-button>
+      <el-button :icon="Upload" @click="openImportDialog">批量导入</el-button>
     </div>
 
     <div class="filter-bar">
@@ -178,6 +240,38 @@ const getStatusText = (status: string) => {
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSave" :loading="submitting">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="importDialogVisible" title="批量导入房号" width="600px" destroy-on-close>
+      <div style="margin-bottom:12px">
+        <el-button type="success" :icon="Download" @click="handleDownloadTemplate">下载模板</el-button>
+        <span style="margin-left:12px;color:#999;font-size:12px">支持 .xlsx/.xls 文件，必填：房号名称</span>
+      </div>
+      <el-upload
+        action="#"
+        :auto-upload="false"
+        :show-file-list="true"
+        :on-change="handleFileChange"
+        accept=".xlsx,.xls"
+        style="margin-bottom:12px"
+      >
+        <el-button type="primary" :icon="Upload">选择Excel文件</el-button>
+      </el-upload>
+      <el-empty v-if="!importResult" description="请上传Excel文件进行导入" />
+      <div v-else>
+        <el-alert v-if="importResult.errors.length > 0" type="warning" :title="`${importResult.errors.length} 条错误`" style="margin-bottom:8px" />
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="成功"><el-tag type="success">{{ importResult.success }}</el-tag></el-descriptions-item>
+          <el-descriptions-item label="失败"><el-tag type="danger">{{ importResult.failed }}</el-tag></el-descriptions-item>
+          <el-descriptions-item label="跳过"><el-tag type="info">{{ importResult.skipped }}</el-tag></el-descriptions-item>
+        </el-descriptions>
+        <div v-if="importResult.errors.length > 0" style="margin-top:8px;max-height:150px;overflow-y:auto">
+          <div v-for="(err, idx) in importResult.errors" :key="idx" style="color:#e6a23c;font-size:12px">{{ idx+1 }}. {{ err }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>

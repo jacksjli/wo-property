@@ -50,7 +50,27 @@ export interface ApiResponse<T> {
   pageSize?: number
 }
 
+export interface ImportBuildingsResult {
+  success: boolean
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  errors: string[]
+}
+
 export const masterDataApi = {
+  /** 批量导入人员（PersonService） */
+  importPersons: (data: { rows: any[] }) =>
+    masterApi.post('/api/persons/import', data),
+
+  /** 下载人员导入模板 */
+  downloadPersonTemplate: () =>
+    masterApi.get('/api/persons/import/template', { responseType: 'blob' }),
+
+  /** 批量导入工单类型 */
+  importJobTypes: (data: { rows: any[] }) =>
+    masterApi.post('/job-types/import', data),
+
   /** 获取所有字段定义（不分页，一次返回全部） */
   getAllFieldsNoPagination: () =>
     masterApi.get<ApiResponse<FieldDefinition[]>>('/field-definitions/all'),
@@ -106,6 +126,23 @@ export const masterDataApi = {
   /** 解析字段名为标准名（支持等价映射） */
   resolveFields: (fields: string[]) =>
     masterApi.post<ApiResponse<Record<string, string>>>('/api/field-equivalences/resolve', { fields }),
+
+  /** 批量导入房号 */
+  importRooms: (data: { rows: any[] }) =>
+    masterApi.post<ApiResponse<{ success: number; failed: number; skipped: number; errors: string[] }>>('/api/rooms/import', data),
+
+
+  /** 批量导入区域 */
+  importAreas: (data: { rows: any[] }) =>
+    masterApi.post('/areas/import', data),
+
+  /** 下载区域导入模板 */
+  downloadAreaTemplate: () =>
+    masterApi.get('/areas/import/template', { responseType: 'blob' }),
+
+  /** 批量导入楼栋 */
+  importBuildings: (data: { rows: any[] }) =>
+    masterApi.post<ImportBuildingsResult>('/buildings/import', data),
 }
 
 export default masterDataApi
