@@ -498,7 +498,7 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
         </el-row>
         <el-form-item label="工单类型">
           <el-select v-model="selectedTicketTypeIds" multiple placeholder="选择工单类型（可多选）" style="width: 100%" @change="loadJobTypesForSelected">
-            <el-option v-for="tt in ticketTypes" :key="tt.id" :label="tt.name" :value="tt.id" />
+            <el-option v-for="tt in ticketTypes" :key="tt.value" :label="tt.label" :value="tt.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="专业技能">

@@ -655,7 +655,7 @@ onMounted(() => {
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="工单类型" prop="ticketTypeId">
           <el-select v-model="form.ticketTypeId" placeholder="请选择工单类型" style="width: 100%" :disabled="!!editingId">
-            <el-option v-for="tt in ticketTypes" :key="tt.id" :label="tt.name" :value="tt.id" />
+            <el-option v-for="tt in ticketTypes" :key="tt.value" :label="tt.label" :value="tt.value" />
           </el-select>
         </el-form-item>
         <el-row :gutter="12">
