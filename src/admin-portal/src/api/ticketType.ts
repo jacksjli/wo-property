@@ -23,10 +23,10 @@ export interface JobType {
 const api = baseTicketApi
 
 export const ticketTypeApi = {
-  getAll: () => api.get<{ success: boolean; data: TicketType[] }>('/api/enums/ticket-types'),
-  getById: (id: number) => api.get<{ success: boolean; data: TicketType }>(`/api/enums/ticket-types/${id}`),
-  create: (data: Partial<TicketType>) => api.post<{ success: boolean; data: TicketType }>('/api/enums/ticket-types', data),
-  update: (id: number, data: Partial<TicketType>) => api.put<{ success: boolean; data: TicketType }>(`/api/enums/ticket-types/${id}`, data),
-  delete: (id: number) => api.delete(`/api/enums/ticket-types/${id}`),
+  getAll: () => api.get<{ success: boolean; data: TicketType[] }>('/api/ticket-types'),
+  getById: (id: number) => api.get<{ success: boolean; data: TicketType }>(`/api/ticket-types/${id}`),
+  create: (data: Partial<TicketType>) => api.post<{ success: boolean; data: TicketType }>('/api/ticket-types', data),
+  update: (id: number, data: Partial<TicketType>) => api.put<{ success: boolean; data: TicketType }>(`/api/ticket-types/${id}`, data),
+  delete: (id: number) => api.delete(`/api/ticket-types/${id}`),
   createJobType: (typeId: number, data: Partial<JobType>) => api.post<{ success: boolean; message?: string }>(`/api/ticket-types/${typeId}/job-types`, data),
 }
