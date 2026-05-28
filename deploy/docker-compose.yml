@@ -1,0 +1,352 @@
+version: '3.8'
+
+services:
+  # ========== 数据库 ==========
+  mysql:
+    image: mysql:8.0
+    container_name: wo-property-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-RootPassword2026!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wo_property}
+      MYSQL_USER: ${MYSQL_USER:-woproperty}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-WOProperty2026!}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - wo-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========== 网关 ==========
+  gateway:
+    build:
+      context: ../src
+      dockerfile: WO.Property.GatewayService/Dockerfile
+    container_name: wo-property-gateway
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - JwtSettings__SecretKey=${JWT_SECRET_KEY:-WO-Property-Management-Unified-Secret-Key-2026-For-All-Services}
+      - JwtSettings__Issuer=wo-property-unified-auth
+      - JwtSettings__Audience=wo-property-services
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========== 认证服务 ==========
+  auth-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.AuthService/Dockerfile
+    container_name: wo-property-auth
+    restart: unless-stopped
+    ports:
+      - "5106:5106"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - CENTER_DB_CONNECTION_STRING=Server=mysql;Port=3306;Database=center_db;User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5106/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========== 工单服务 ==========
+  ticket-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.TicketService/Dockerfile
+    container_name: wo-property-ticket
+    restart: unless-stopped
+    ports:
+      - "5102:5102"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 人员服务 ==========
+  person-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.PersonService/Dockerfile
+    container_name: wo-property-person
+    restart: unless-stopped
+    ports:
+      - "5018:5018"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 主数据服务 ==========
+  masterdata-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.MasterDataService/Dockerfile
+    container_name: wo-property-masterdata
+    restart: unless-stopped
+    ports:
+      - "5019:5019"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 派工服务 ==========
+  dispatch-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.DispatchService/Dockerfile
+    container_name: wo-property-dispatch
+    restart: unless-stopped
+    ports:
+      - "5241:5241"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 通知服务 ==========
+  notification-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.NotificationService/Dockerfile
+    container_name: wo-property-notification
+    restart: unless-stopped
+    ports:
+      - "5505:5505"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 物料服务 ==========
+  material-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.MaterialService/Dockerfile
+    container_name: wo-property-material
+    restart: unless-stopped
+    ports:
+      - "5504:5504"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 设备服务 ==========
+  device-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.DeviceService/Dockerfile
+    container_name: wo-property-device
+    restart: unless-stopped
+    ports:
+      - "5530:5530"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 公告服务 ==========
+  announcement-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.AnnouncementService/Dockerfile
+    container_name: wo-property-announcement
+    restart: unless-stopped
+    ports:
+      - "5511:5511"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 合同服务 ==========
+  contract-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.ContractService/Dockerfile
+    container_name: wo-property-contract
+    restart: unless-stopped
+    ports:
+      - "5501:5501"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 钥匙服务 ==========
+  key-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.KeyService/Dockerfile
+    container_name: wo-property-key
+    restart: unless-stopped
+    ports:
+      - "5512:5512"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 财务服务 ==========
+  finance-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.FinanceService/Dockerfile
+    container_name: wo-property-finance
+    restart: unless-stopped
+    ports:
+      - "5202:5202"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 巡检服务 ==========
+  inspection-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.InspectionService/Dockerfile
+    container_name: wo-property-inspection
+    restart: unless-stopped
+    ports:
+      - "5507:5507"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 投诉服务 ==========
+  complaint-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.ComplaintService/Dockerfile
+    container_name: wo-property-complaint
+    restart: unless-stopped
+    ports:
+      - "5201:5201"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 访客服务 ==========
+  visitor-service:
+    build:
+      context: ../src
+      dockerfile: WO.Property.VisitorService/Dockerfile
+    container_name: wo-property-visitor
+    restart: unless-stopped
+    ports:
+      - "5506:5506"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - wo-net
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=root;Password=${MYSQL_ROOT_PASSWORD};CharSet=utf8mb4;
+
+  # ========== 管理后台 (Vue) ==========
+  admin-portal:
+    build:
+      context: ../src/admin-portal
+      dockerfile: Dockerfile
+    container_name: wo-property-admin
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - gateway
+    networks:
+      - wo-net
+    environment:
+      - VITE_API_BASE=http://gateway:5000/api
+
+  # ========== 小程序后端 API (Node) ==========
+  mobile-api:
+    build:
+      context: ../src/woa-property-mini
+      dockerfile: Dockerfile
+    container_name: wo-property-mobile-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+    networks:
+      - wo-net
+    environment:
+      - API_BASE=http://gateway:5000/api
+
+# ========== 网络 ==========
+networks:
+  wo-net:
+    driver: bridge
+
+# ========== 存储卷 ==========
+volumes:
+  mysql_data:
+    driver: local
