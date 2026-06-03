@@ -1,5 +1,36 @@
 # 审计日志总表
 
+## 2026-05-25 本周审计
+
+### 本周重点模块
+- 工单模块（TicketService + DispatchService）
+- API Gateway 路由配置
+- 16个服务完整 API 链路测试
+
+### 执行时间
+2026-05-25 09:00
+
+### 审计方法
+- API 链路测试：使用 curl + Python 脚本直接调用 16 个服务
+- 代码审查：对比 `docs/design/TICKET_SERVICE_ARCHITECTURE_v1.0.md` 与实际代码
+- 配置检查：对比 `config/ports.json` 与实际监听端口
+
+### 评级：🟡 观察
+
+**原因：**
+- 核心业务逻辑（工单编号、状态流转、派单算法）与设计文档一致 ✅
+- 端口配置偏差（DispatchService 文档5003/实际5241）需要更新文档
+- JWT tenant_code 为空影响 6 个服务认证，需要修复
+- Gateway 部分路由 404，需要排查配置
+
+### 行动项：
+- [ ] 更新 `TICKET_SERVICE_ARCHITECTURE_v1.0.md` DispatchService 端口（5003→5241）
+- [ ] 排查 API Gateway /api/tickets 路由 404 问题
+- [ ] 修复 AuthService JWT tenant_code 写入逻辑
+- [ ] 详细报告见：`docs/audit/PRODUCTION_TICKET_AUDIT_2026-05.md`
+
+---
+
 ## 2026-05-11 本周审计
 
 ### 本周重点模块
@@ -218,4 +249,225 @@ _更新周期：每周一_
 ## 整体评级：🟢 合规
 
 所有本次实现的模块均已通过检查，设计文档与代码一致。
+
+
+---
+
+## 2026-05-25 Schema规范化行动
+
+### 背景
+今天修复了三个服务（KeyService, InspectionService, FinanceService）的模型与数据库不匹配问题。
+根本原因是：代码设计与数据库实际结构脱节。
+
+### 执行的操作
+
+1. **创建完整数据库 Schema 文档**
+   - 文件: `docs/database/SCHEMA_REFERENCE.md`
+   - 内容: 所有表结构的列名、类型、映射规则
+   - 目的: 建立"数据库是唯一真相来源"的标准
+
+2. **创建 Schema 验证脚本**
+   - 文件: `scripts/validate-schema.sh`
+   - 功能: 检查 TenantDbContext vs 数据库列名
+   - 使用: `./scripts/validate-schema.sh KeyService`
+
+3. **创建 Schema 验证技能**
+   - 文件: `skills/schema-validation/SKILL.md`
+   - 规范: 设计→实现→验证→文档 的完整流程
+
+### 根因分析
+- 代码模型凭空设计，未对照数据库实际结构
+- 文档只写"是什么"，不写"数据库实际是什么"
+- 缺少代码 vs 数据库验证环节
+
+### 预防措施
+- 设计阶段必须先查数据库 Schema
+- 实现阶段使用显式 HasColumnName 映射
+- 验证阶段运行 validate-schema.sh
+- 文档阶段更新 SCHEMA_REFERENCE.md
+
+### 相关文件
+- `docs/database/SCHEMA_REFERENCE.md` (新建)
+- `scripts/validate-schema.sh` (新建)
+- `skills/schema-validation/SKILL.md` (新建)
+
+---
+
+## 2026-05-25 设计文档更新
+
+### 更新/新建的文档
+
+| 文档 | 操作 | 说明 |
+|------|------|------|
+| `docs/README.md` | 重写 | 完整设计文档，包含架构、服务、数据库、API规范 |
+| `docs/SERVICES_STATUS.md` | 重写 | 服务状态表，包含端口、表、状态、备注 |
+| `docs/ARCHITECTURE_OVERVIEW.md` | 新建 | 项目架构概览，技术栈、系统架构图、多租户说明 |
+| `docs/database/SCHEMA_REFERENCE.md` | 新建 | 完整数据库Schema对照表，68张表结构 |
+| `docs/design/SERVICE_REFACTOR_2026-05-25.md` | 新建 | 服务重构记录 |
+
+### 文档结构
+
+```
+docs/
+├── README.md                    # 主文档（设计文档入口）
+├── ARCHITECTURE_OVERVIEW.md     # 项目架构概览
+├── SERVICES_STATUS.md           # 服务状态
+├── PORTS.md                     # 端口分配
+├── API_STANDARD.md              # API规范
+├── AUDIT_LOG.md                 # 审计日志
+├── database/
+│   └── SCHEMA_REFERENCE.md      # 数据库Schema完整参考
+└── design/
+    ├── TICKET_SERVICE_ARCHITECTURE_v1.0.md
+    └── SERVICE_REFACTOR_2026-05-25.md
+```
+
+### 核心原则
+
+**数据库是唯一真相来源 (Database is the source of truth)**
+
+所有文档现在都遵循这一原则，代码实现必须与数据库一致。
+
+### 验证流程
+
+1. `docs/database/SCHEMA_REFERENCE.md` - 所有表结构的准确记录
+2. `scripts/validate-schema.sh` - Schema验证脚本
+3. `skills/schema-validation/SKILL.md` - 验证工作流技能
+
+
+---
+
+## 2026-05-27 下午 (16:30-16:45)
+
+### WebSocket 实时事件系统实现完成
+
+#### 完成的工作
+
+1. **Gateway WebSocket 支持**
+   - 文件: `src/WO.Property.GatewayService/WebSocketManager.cs`
+   - 端点: `/ws` (WebSocket), `/internal/events/publish` (HTTP)
+
+2. **事件发布实现**
+   - TicketService: ticket:created, ticket:updated
+   - DispatchService: dispatch:dispatched, received, completed
+   - NotificationService: notification:created, read
+   - PaymentService: payment:created, status_changed
+   - ComplaintService: complaint:created, status_changed
+   - InspectionService: inspection:created, updated
+   - AnnouncementService: announcement:created
+
+3. **前端 WebSocket 客户端**
+   - admin-portal: `src/admin-portal/src/stores/websocket.ts`
+   - 小程序: `src/woa-property-mini/src/utils/websocket.js`
+
+#### 统一事件格式
+
+```javascript
+{
+  module: "ticket",
+  eventType: "created",
+  data: { id, ticketCode, title, status }
+}
+```
+
+### 端口配置化完成
+
+#### 完成的工作
+
+1. **更新 ports.json**
+   - 添加 27 个服务端口配置
+   - 统一从 `config/ports.json` 读取
+
+2. **创建配置组件**
+   - `src/WO.Shared/Configuration/PortConfig.cs` - 端口配置读取器
+   - `src/WO.Shared/Configuration/ServiceRunner.cs` - 服务启动助手
+
+3. **修改所有服务**
+   - 移除硬编码端口
+   - 改用 `ServiceRunner.ConfigurePort(builder, "ServiceName", defaultPort)`
+
+#### 受影响的服务 (25个)
+
+```
+✅ AuthService        ✅ TicketService      ✅ DispatchService
+✅ MasterDataService  ✅ NotificationService ✅ PaymentService
+✅ ComplaintService   ✅ InspectionService  ✅ AnnouncementService
+✅ MaterialService    ✅ DeviceService      ✅ ContractService
+✅ FinanceService     ✅ KeyService         ✅ VisitorService
+✅ StatisticsService  ✅ MobileService      ✅ AccessControlService
+✅ CleaningService    ✅ CommunityService   ✅ DeliveryService
+✅ ExpressService     ✅ ParkingService     ✅ RenovationService
+✅ TicketTypeService
+```
+
+### 文档更新
+
+| 文档 | 说明 |
+|------|------|
+| `docs/PORTS.md` | 更新端口配置 + WebSocket 事件系统说明 |
+| `docs/design/WEBSOCKET_EVENT_SYSTEM_v1.0.md` | 新建 WebSocket 架构文档 |
+| `docs/SERVICES_STATUS.md` | 更新服务状态报告 |
+
+### 下一步
+
+- [ ] 启动所有待启动的服务
+- [ ] 测试完整的事件发布链路
+- [ ] 前端页面集成 WebSocket 实时更新
+
+## 2026-05-28 超时自动升级系统实施
+
+### 概述
+实施工单超时自动升级功能，支持根据角色从 timeout_rules 表动态读取超时时间，超时后自动升级给更高级别角色。
+
+### 修改范围
+- DispatchService：超时监控 + 升级逻辑 + API
+- admin-portal：派单列表 + 工单详情
+- woa-property-mini：工单列表 + 工单详情
+
+### 技术决策
+1. **超时配置**：从 timeout_rules 表读取（支持按 color + role）
+2. **升级路径**：operator → supervisor → manager → department_head → company_head
+3. **升级记录**：新建 timeout_escalations 表存储升级历史
+4. **派单关联**：parent_dispatch_id 关联母派单，escalation_level 记录级别
+
+### 新增文件
+- docs/design/ESCALATION_SYSTEM_v1.0.md
+
+### 新增数据库表
+- timeout_escalations
+
+### 新增数据库字段
+- dispatch_records.parent_dispatch_id
+- dispatch_records.escalation_level
+
+### API 变更
+- 新增 GET /api/tenant/dispatch/escalations/{ticketId}
+
+### 状态
+✅ 已实施完成
+
+---
+
+## 2026-06-01 本周审计
+
+### 本周重点模块
+- 工单模块（TicketService + 多项目支持）
+- API 契约一致性（工单编号格式）
+- 后端服务端口配置（DispatchService 5241）
+
+### 执行时间
+2026-06-01 09:00
+
+### 评级：🟡 观察
+
+**原因：**
+- 工单编号格式已升级（`YGHY001-WO-YYYYMM-NNNNN`），但设计文档 `DESIGN.md` 未更新
+- 多项目支持（`X-Project-Code` header 过滤）已实施，但无设计文档记录
+- DispatchService 端口 5241（文档写 5003）偏差已确认
+
+### 行动项：
+- [x] 更新 `docs/MODULES/ticket/DESIGN.md` 第2章（工单编号多项目格式）
+- [x] 新增「多项目支持」章节至 `DESIGN.md`
+- [x] 更新 `DESIGN.md` DispatchService 端口（5003→5241）
+- [ ] 详细报告见：`docs/audit/PRODUCTION_TICKET_AUDIT_2026-06.md`
 

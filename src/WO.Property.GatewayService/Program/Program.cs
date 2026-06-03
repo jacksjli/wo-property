@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.OpenApi.Models;
+using WO.Property.GatewayService;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -117,12 +118,21 @@ builder.Services.AddCors(options =>
     });
 });
 
+// WebSocket 管理器
+builder.Services.AddWebSocketManager();
+
 var app = builder.Build();
 
 // ============================================================
-// 7. 中间件管道
+// 6. 中间件管道
 // ============================================================
+// CORS 必须放在 WebSocket 之前，因为握手需要 CORS 头
 app.UseCors("AllowFrontend");
+
+// WebSocket 支持（必须在 UseWebSocketManager 之前）
+// 注意：WebSocket 握手必须在认证之前，否则会被 auth 中间件拦截导致 403
+app.UseWebSockets();
+app.UseWebSocketManager();
 
 // Swagger UI
 if (app.Environment.IsDevelopment())
@@ -131,13 +141,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// 自定义中间件：请求日志 + 项目隔离 Header（放在 auth 之前，避免对 /ws 的干扰）
+app.UseRequestLogging();
+app.UseProjectIsolation();
+
 // 认证（用于网关本身验证，如 /me）
 app.UseAuthentication();
 app.UseAuthorization();
-
-// 自定义中间件：请求日志 + 项目隔离 Header
-app.UseRequestLogging();
-app.UseProjectIsolation();
 
 // 健康检查
 app.MapGet("/health", () => Results.Ok(new
@@ -160,4 +170,42 @@ app.MapGet("/health", () => Results.Ok(new
 // 路由转发
 app.MapReverseProxy();
 
+// 事件 API - 统一事件发布端点，所有服务通过此端点发布事件
+var wsManager = app.Services.GetRequiredService<WO.Property.GatewayService.WebSocketManager>();
+
+// 通用事件发布端点 (旧版，保留兼容)
+app.MapPost("/internal/events/ticket", async (TicketEventPayload payload) =>
+{
+    Console.WriteLine($"[Events] Received: {payload.EventType} - TicketId: {payload.TicketId}");
+    await wsManager.BroadcastAsync("ticketUpdated", payload);
+    return Results.Ok(new { success = true, connections = wsManager.GetConnectionCount() });
+});
+
+// 统一事件发布端点 (新版，所有模块通用)
+app.MapPost("/internal/events/publish", async (PublishEventRequest request) =>
+{
+    Console.WriteLine($"[Events] {request.Module}:{request.EventType}");
+    var eventType = $"{request.Module}:{request.EventType}";
+    await wsManager.BroadcastAsync(eventType, request);
+    return Results.Ok(new { success = true, connections = wsManager.GetConnectionCount() });
+});
+
 app.Run();
+
+public class TicketEventPayload
+{
+    public string EventType { get; set; } = "";
+    public int TicketId { get; set; }
+    public string? TicketCode { get; set; }
+    public string? Title { get; set; }
+    public string? Status { get; set; }
+    public string? PreviousStatus { get; set; }
+    public object? ExtraData { get; set; }
+}
+
+public class PublishEventRequest
+{
+    public string Module { get; set; } = "";
+    public string EventType { get; set; } = "";
+    public object? Data { get; set; }
+}

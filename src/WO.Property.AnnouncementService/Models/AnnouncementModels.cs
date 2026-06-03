@@ -38,6 +38,9 @@ public class Announcement : BaseEntity
     public int ViewCount { get; set; } = 0;
 
     public int ProjectId { get; set; } = 1;
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class AnnouncementRead : BaseEntity

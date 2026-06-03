@@ -16,6 +16,7 @@ public class TenantDbContext : DbContext
     public DbSet<ParkingSpace> ParkingSpaces => Set<ParkingSpace>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<ParkingRecord> ParkingRecords => Set<ParkingRecord>();
+    public DbSet<ParkingPayment> ParkingPayments => Set<ParkingPayment>();
 
     public TenantDbContext(
         DbContextOptions<TenantDbContext> options,
@@ -45,6 +46,7 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.Spaces);
             entity.Ignore(e => e.Records);
         });
@@ -64,6 +66,7 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.Lot);
             entity.Ignore(e => e.Vehicle);
         });
@@ -86,6 +89,7 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
         });
 
         modelBuilder.Entity<ParkingRecord>(entity =>
@@ -111,7 +115,29 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.Lot);
+            entity.Property(e => e.SpaceId).HasColumnName("space_id");
+        });
+
+        modelBuilder.Entity<ParkingPayment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("parking_payments");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.PaymentNo).HasColumnName("payment_no");
+            entity.Property(e => e.PlateNumber).HasColumnName("plate_number");
+            entity.Property(e => e.Amount).HasColumnName("amount");
+            entity.Property(e => e.Type).HasColumnName("type");
+            entity.Property(e => e.Method).HasColumnName("method");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.PaidAt).HasColumnName("paid_at");
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.UpdatedBy);
+            entity.Ignore(e => e.UpdatedAt);
+            entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
         });
     }
 }

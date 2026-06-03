@@ -12,7 +12,14 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5525");
+ServiceRunner.ConfigurePort(builder, "ParkingService", 5525);
+
+// 添加连接字符串配置（供 TenantDbFactory 使用）
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4",
+    ["ConnectionStrings:CenterDb"] = "Server=127.0.0.1;Port=3306;Database=center_db;User=root;Password=;CharSet=utf8mb4"
+});
 
 // ─── Phase 1 多租户组件注册 ───
 builder.Services.AddHttpContextAccessor();

@@ -41,6 +41,7 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.Remarks).HasColumnName("Remarks");
             entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
             entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
         });
 
         modelBuilder.Entity<ExternalPerson>(entity =>

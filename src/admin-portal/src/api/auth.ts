@@ -1,7 +1,8 @@
 import axios from 'axios'
 
-// CenterService (5016) - 单租户多项目认证
-const CENTER_BASE_URL = 'http://localhost:5000'
+// CenterService (5106) - 单租户多项目认证
+import { getServiceUrl } from './config'
+const CENTER_BASE_URL = getServiceUrl('auth')
 
 // 创建认证服务HTTP客户端
 const authHttp = axios.create({
@@ -39,14 +40,27 @@ authHttp.interceptors.response.use(
 
 // 登录 - 调用 CenterService
 export const login = async (username: string, password: string) => {
-  const response = await authHttp.post('/api/auth/login', { username, password })
+  const rawResponse = await authHttp.post('/api/auth/login', { username, password, tenantCode: 'wo_property' })
+  // rawResponse = axios response, .data = { success, message, data: { token, projects, user } }
+  const response = rawResponse
   console.log('[Auth] Login response:', JSON.stringify(response))
-  // 保存 token 和 user - response 已经是解包后的数据（中间件已处理）
-  if (response.success && response.token) {
-    localStorage.setItem('token', response.token)
-    localStorage.setItem('refreshToken', response.refreshToken || '')
-    localStorage.setItem('user', JSON.stringify(response.user || response))
-    console.log('[Auth] Token saved:', response.token?.substring(0, 20) + '...')
+  
+  // 检查外层 success
+  if (response.success) {
+    // token/project/user 在内层 data 中，需要展开到外层供 LoginView 使用
+    const data = response.data || {}
+    if (data.token) {
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('refreshToken', data.refreshToken || '')
+      localStorage.setItem('user', JSON.stringify(data.user || response))
+      console.log('[Auth] Token saved:', data.token?.substring(0, 20) + '...')
+      // 展开 data 到外层，保持与 LoginView 的兼容性
+      response.token = data.token
+      response.projects = data.projects || []
+      response.user = data.user
+      response.tenantId = data.tenantId
+      response.tenantCode = data.tenantCode
+    }
   } else {
     console.log('[Auth] Login failed - response:', JSON.stringify(response))
   }

@@ -69,6 +69,7 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.Publisher);
             entity.Ignore(e => e.PublishTime);
             entity.Ignore(e => e.ViewCount);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.ProjectId);
         });
 

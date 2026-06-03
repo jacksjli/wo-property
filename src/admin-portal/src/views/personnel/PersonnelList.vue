@@ -28,6 +28,8 @@ interface Personnel {
   socialSecurityNo?: string; status: PersonnelStatus; specialties: string[]; backups: BackupStaff[];
   attendanceCount: number; overtimeHours: number; leaveDays: number; performanceScore?: number;
   trainingCount: number; remark?: string; createdAt: string; updatedAt: string;
+  areaIds: number[]; // 负责区域列表
+  buildingIds: number[]; // 负责楼栋列表
 }
 
 // 字段配置对话框
@@ -65,6 +67,28 @@ const loadDepartments = async () => {
   try {
     const r: any = await masterApi.get('/departments')
     if (r.success && r.data) departments.value = Array.isArray(r.data) ? r.data : (r.data.data || [])
+  } catch {}
+}
+
+// 区域列表（用于人员负责区域配置）
+const areas = ref<any[]>([])
+const loadAreas = async () => {
+  try {
+    const r: any = await masterApi.get('/hierarchy/areas')
+    if (r.success) areas.value = r.data || []
+  } catch {}
+}
+
+// 楼栋列表（按区域存储，key=areaId）
+const buildingsByArea = ref<Record<number, any[]>>({})
+
+const loadBuildingsForArea = async (areaId: number) => {
+  if (buildingsByArea.value[areaId]) return
+  try {
+    const r: any = await masterApi.get(`/hierarchy/area-buildings?areaId=${areaId}`)
+    if (r.success && r.data?.buildings) {
+      buildingsByArea.value[areaId] = r.data.buildings
+    }
   } catch {}
 }
 
@@ -120,9 +144,24 @@ const form = ref({
   email: '', address: '', education: 'bachelor' as Education, graduateSchool: '', major: '',
   role: 'operator' as PersonnelRole, departmentId: 1, position: '',
   employmentType: 'full_time' as EmploymentType, hireDate: '', contractStart: '', contractEnd: '',
-  salary: 0, ticketTypeIds: [] as number[], specialtyIds: [] as number[], remark: '',
+  salary: 0, ticketTypeIds: [] as number[], specialtyIds: [] as number[], areaIds: [] as number[], buildingIds: [] as number[], remark: '',
     status: 'probation', isSupervisor: false, maxConcurrentTickets: 5, avatar: '',
     backups: '', emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelationship: ''
+})
+
+// 监听区域变化，加载对应楼栋
+watch(() => form.value.areaIds, async (newAreaIds) => {
+  if (!newAreaIds || newAreaIds.length === 0) {
+    form.value.buildingIds = []
+    return
+  }
+  // 加载所有选中区域的楼栋（并行）
+  await Promise.all(newAreaIds.map(areaId => loadBuildingsForArea(areaId)))
+  // 过滤掉不属于已选区域的楼栋
+  const validBuildingIds = form.value.buildingIds.filter(bId =>
+    Object.values(buildingsByArea.value).some(bs => bs.some(b => b.id === bId))
+  )
+  form.value.buildingIds = validBuildingIds
 })
 
 // 选项
@@ -134,7 +173,8 @@ const employmentTypeOptions = Object.entries(employmentTypeLabels).map(([value, 
 
 // 工单类型和工种
 const ticketTypes = ref<any[]>([])
-const jobTypes = ref<any[]>([])
+const filteredJobTypes = ref<any[]>([]) // 当前选中工单类型的工种（用于编辑表单）
+const allJobTypes = ref<any[]>([]) // 全量工种（用于表格渲染）
 const selectedTicketTypeIds = ref<number[]>([])
 
 const loadTicketTypes = async () => {
@@ -144,17 +184,26 @@ const loadTicketTypes = async () => {
   } catch {}
 }
 
-const loadJobTypesForSelected = async () => {
-  if (!selectedTicketTypeIds.value.length) { jobTypes.value = []; return }
+// 加载所有工种（初始化时加载，用于表格渲染）
+const loadAllJobTypes = async () => {
+  try {
+    const r: any = await masterApi.get('/job-types', { params: { page: 1, pageSize: 500 } })
+    if (r.success) allJobTypes.value = r.data?.items || r.data || []
+  } catch { allJobTypes.value = [] }
+}
+
+// 加载当前选中工单类型的工种（用于编辑表单）
+const loadFilteredJobTypes = async () => {
+  filteredJobTypes.value = []
+  if (!selectedTicketTypeIds.value.length) return
   const all: any[] = []
   for (const ttid of selectedTicketTypeIds.value) {
     try {
-      const r: any = await fetch(`http://localhost:5019/api/job-types?ticketTypeId=${ttid}&status=Active`)
-      const data = await r.json()
-      if (data.success) all.push(...data.data)
+      const r: any = await masterApi.get('/job-types', { params: { ticketTypeId: ttid, status: 'Active', page: 1, pageSize: 500 } })
+      if (r.success) all.push(...(r.data?.items || r.data || []))
     } catch {}
   }
-  jobTypes.value = all
+  filteredJobTypes.value = all
 }
 
 // 按工单类型分组工种
@@ -162,7 +211,7 @@ const groupedJobTypes = computed(() => {
   const groups: Record<number, { name: string; items: any[] }> = {}
   for (const tt of ticketTypes.value) {
     if (selectedTicketTypeIds.value.includes(tt.id)) {
-      const types = jobTypes.value.filter(jt => jt.ticket_type_id === tt.id)
+      const types = filteredJobTypes.value.filter(jt => jt.ticket_type_id === tt.id)
       if (types.length) groups[tt.id] = { name: tt.name, items: types }
     }
   }
@@ -170,8 +219,8 @@ const groupedJobTypes = computed(() => {
 })
 
 watch(selectedTicketTypeIds, async () => {
-  await loadJobTypesForSelected()
-  const allowed = new Set(jobTypes.value.map(j => j.id))
+  await loadFilteredJobTypes()
+  const allowed = new Set(filteredJobTypes.value.map(j => j.id))
   form.value.specialtyIds = form.value.specialtyIds.filter((id: number) => allowed.has(id))
 })
 
@@ -212,8 +261,11 @@ const loadData = async () => {
         employmentType: p.employmentType,
         hireDate: p.hireDate,
         status: p.status,
+        // JSON 字段
         ticketTypeIds: p.ticketTypeIds ? JSON.parse(p.ticketTypeIds) : [],
         specialtyIds: p.specialtyIds ? JSON.parse(p.specialtyIds) : [],
+        areaIds: p.areaIds ? JSON.parse(p.areaIds) : [],
+        buildingIds: p.buildingIds ? JSON.parse(p.buildingIds) : [],
         backups: p.backups ? (typeof p.backups === 'string' ? JSON.parse(p.backups) : p.backups) : []
       }))
     }
@@ -221,10 +273,15 @@ const loadData = async () => {
   finally { loading.value = false }
 }
 
-// 获取工种名称列表
+// 获取工种名称列表（优先从 filteredJobTypes 查找，回退到 allJobTypes）
 const getJobTypeNames = (ids: number[]) => {
   if (!ids || !ids.length) return []
-  return ids.map((id: number) => jobTypes.value.find(j => j.id === id)?.name).filter(Boolean)
+  return ids.map((id: number) => {
+    const found = filteredJobTypes.value.find(j => j.id === id)
+    if (found) return found.name
+    const foundInAll = allJobTypes.value.find(j => j.id === id)
+    return foundInAll?.name || null
+  }).filter(Boolean)
 }
 
 // 获取启用的字段
@@ -239,12 +296,12 @@ const handleAdd = () => {
     employeeNo: 'EMP' + String(Date.now()).slice(-5), name: '', gender: 'male', birthday: '',
     idCard: '', phone: '', email: '', address: '', education: 'bachelor', graduateSchool: '', major: '',
     role: 'operator', departmentId: 1, position: '', employmentType: 'full_time', hireDate: today,
-    contractStart: '', contractEnd: '', salary: 0, ticketTypeIds: [], specialtyIds: [], remark: '',
+    contractStart: '', contractEnd: '', salary: 0, ticketTypeIds: [], specialtyIds: [], areaIds: [], buildingIds: [], remark: '',
     status: 'probation', isSupervisor: false, maxConcurrentTickets: 5, avatar: '',
     backups: '', emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelationship: ''
   }
   selectedTicketTypeIds.value = []
-  jobTypes.value = []
+  filteredJobTypes.value = []
   dialogVisible.value = true
 }
 
@@ -252,21 +309,52 @@ const handleAdd = () => {
 const handleEdit = async (row: Personnel) => {
   dialogTitle.value = '编辑人员'
   editingId.value = row.id
+  // 从 API 获取最新完整数据，避免列表数据字段缺失
+  const res: any = await personApi.get(row.id)
+  if (!res.success) { ElMessage.error('获取人员信息失败'); return }
+  const p = res.data
   form.value = {
-    employeeNo: row.employeeNo, name: row.name, gender: row.gender,
-    birthday: row.birthday || '', idCard: row.idCard, phone: row.phone,
-    email: row.email || '', address: row.address || '', education: row.education,
-    graduateSchool: row.graduateSchool || '', major: row.major || '',
-    role: row.role, departmentId: row.departmentId || 1, position: row.position,
-    employmentType: row.employmentType, hireDate: row.hireDate,
-    contractStart: row.contractStart || '', contractEnd: row.contractEnd || '',
-    salary: row.salary || 0, ticketTypeIds: row.ticketTypeIds || [], specialtyIds: row.specialtyIds || [], remark: row.remark || '',
-    status: row.status || 'probation', isSupervisor: row.isSupervisor || false, maxConcurrentTickets: row.maxConcurrentTickets || 5,
-    avatar: row.avatar || '', backups: row.backups || '', emergencyContactName: row.emergencyContactName || '',
-    emergencyContactPhone: row.emergencyContactPhone || '', emergencyContactRelationship: row.emergencyContactRelationship || ''
+    employeeNo: p.employeeNo || '', name: p.name || '', gender: p.gender || 'male',
+    birthday: p.birthday || '', idCard: p.idCard || '', phone: p.phone || '',
+    email: p.email || '', address: p.address || '', education: p.education || 'bachelor',
+    graduateSchool: p.graduateSchool || '', major: p.major || '',
+    role: p.role || 'operator', departmentId: p.departmentId || 1, position: p.position || '',
+    employmentType: p.employmentType || 'full_time', hireDate: p.hireDate || '',
+    contractStart: p.contractStart || '', contractEnd: p.contractEnd || '',
+    salary: p.salary || 0,
+    ticketTypeIds: p.ticketTypeIds ? JSON.parse(p.ticketTypeIds) : [],
+    specialtyIds: p.specialtyIds ? JSON.parse(p.specialtyIds) : [],
+    areaIds: p.areaIds ? JSON.parse(p.areaIds) : [],
+    buildingIds: p.buildingIds ? JSON.parse(p.buildingIds) : [],
+    remark: p.remark || '',
+    status: p.status || 'probation',
+    isSupervisor: p.isSupervisor ?? false,
+    maxConcurrentTickets: p.maxConcurrentTickets ?? 5,
+    avatar: p.avatar || '',
+    backups: p.backups ? (typeof p.backups === 'string' ? JSON.parse(p.backups) : p.backups) : [],
+    emergencyContactName: p.emergencyContactName || '',
+    emergencyContactPhone: p.emergencyContactPhone || '',
+    emergencyContactRelationship: p.emergencyContactRelationship || ''
   }
-  selectedTicketTypeIds.value = [...(row.ticketTypeIds || [])]
-  await loadJobTypesForSelected()
+  selectedTicketTypeIds.value = [...(form.value.ticketTypeIds || [])]
+  
+  // 若工单类型为空但专业技能有值，通过工种反向查找工单类型
+  if (!selectedTicketTypeIds.value.length && form.value.specialtyIds.length) {
+    try {
+      const ids = form.value.specialtyIds.join(',')
+      const r: any = await masterApi.get(`/job-types/by-ids?ids=${ids}`)
+      if (r.success && r.data?.ticketTypeIds?.length) {
+        selectedTicketTypeIds.value = r.data.ticketTypeIds
+      }
+    } catch {}
+  }
+
+  await loadFilteredJobTypes()
+
+  // 过滤：只保留属于当前工单类型的工种
+  const allowed = new Set(filteredJobTypes.value.map((j: any) => j.id))
+  form.value.specialtyIds = form.value.specialtyIds.filter((id: number) => allowed.has(id))
+
   dialogVisible.value = true
 }
 
@@ -305,6 +393,8 @@ const handleSubmit = async () => {
       Remark: form.value.remark || null,
       TicketTypeIds: form.value.ticketTypeIds?.length ? JSON.stringify(form.value.ticketTypeIds) : null,
       SpecialtyIds: form.value.specialtyIds?.length ? JSON.stringify(form.value.specialtyIds) : null,
+      AreaIds: form.value.areaIds?.length ? JSON.stringify(form.value.areaIds) : null,
+      BuildingIds: form.value.buildingIds?.length ? JSON.stringify(form.value.buildingIds) : null,
       Status: form.value.status || 'probation',
       IsSupervisor: form.value.isSupervisor || false,
       MaxConcurrentTickets: form.value.maxConcurrentTickets || 5,
@@ -329,6 +419,11 @@ const handleSubmit = async () => {
 
 // 删除
 const handleDelete = async (row: Personnel) => {
+  if (!row?.id) {
+    console.error('[handleDelete] row.id is invalid:', row?.id)
+    ElMessage.error('删除失败：无效的人员ID')
+    return
+  }
   try {
     await ElMessageBox.confirm(`确定删除人员 "${row.name}" 吗？`, '删除确认', {
       confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
@@ -407,6 +502,35 @@ const handleDownloadTemplate = () => {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, '人员导入模板')
   XLSX.writeFile(wb, '人员导入模板.xlsx')
+}
+
+const handleExport = async () => {
+  try {
+    ElMessage.info('正在导出...')
+    const res: any = await personApi.exportPersons()
+    if (res.success && res.data) {
+      const exportData = res.data.map((p: any) => ({
+        '姓名': p.姓名,
+        '工号': p.工号,
+        '性别': p.性别,
+        '手机': p.手机,
+        '邮箱': p.邮箱,
+        '角色': p.角色,
+        '部门': p.部门,
+        '职位': p.职位,
+        '状态': p.状态,
+        '入职日期': p.入职日期,
+        '专业技能': p.专业技能
+      }))
+      const ws = XLSX.utils.json_to_sheet(exportData)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, '人员列表')
+      XLSX.writeFile(wb, `人员列表_${new Date().toISOString().split('T')[0]}.xlsx`)
+      ElMessage.success('导出成功')
+    } else {
+      ElMessage.error(res.message || '导出失败')
+    }
+  } catch (e: any) { ElMessage.error(e.message || '导出失败') }
 }
 
 const handleFileChange = async (file: any) => {
@@ -488,7 +612,7 @@ const getStatusType = (status: PersonnelStatus) => {
   return map[status]
 }
 
-onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
+onMounted(() => { loadData(); loadTicketTypes(); loadDepartments(); loadAllJobTypes(); loadAreas() })
 </script>
 
 <template>
@@ -505,6 +629,8 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
               <el-icon><Refresh /></el-icon> 刷新
             </el-button>
             <el-button @click="openImportDialog"><el-icon><Upload /></el-icon> 批量导入</el-button>
+            <el-button type="success" @click="handleExport"><el-icon><Download /></el-icon> 导出
+            </el-button>
             <el-button type="primary" @click="handleAdd">
               <el-icon><Plus /></el-icon> 新增人员
             </el-button>
@@ -551,10 +677,22 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
         </el-table-column>
         <el-table-column prop="position" label="职位" width="100" align="center" />
         <el-table-column prop="phone" label="联系电话" width="130" />
-        <el-table-column prop="specialties" label="专业技能" min-width="180">
+        <el-table-column prop="specialtyIds" label="专业技能" min-width="180">
           <template #default="{ row }">
             <el-tag v-for="name in getJobTypeNames(row.specialtyIds).slice(0, 2)" :key="name" size="small" style="margin-right: 4px;">{{ name }}</el-tag>
             <span v-if="getJobTypeNames(row.specialtyIds).length > 2" style="color: #909399; font-size: 12px;">+{{ getJobTypeNames(row.specialtyIds).length - 2 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="负责区域" width="120" align="center">
+          <template #default="{ row }">
+            <span v-if="row.areaIds?.length">{{ row.areaIds.length }}个区域</span>
+            <span v-else style="color: #909399">未配置</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="负责楼栋" width="120" align="center">
+          <template #default="{ row }">
+            <span v-if="row.buildingIds?.length">{{ row.buildingIds.length }}个楼栋</span>
+            <span v-else style="color: #909399">全部</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="90" align="center">
@@ -599,7 +737,7 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
           <el-col :span="8"><el-form-item label="入职日期"><el-date-picker v-model="form.hireDate" type="date" style="width: 100%" /></el-form-item></el-col>
         </el-row>
         <el-form-item label="工单类型">
-          <el-select v-model="selectedTicketTypeIds" multiple placeholder="选择工单类型（可多选）" style="width: 100%" @change="loadJobTypesForSelected">
+          <el-select v-model="selectedTicketTypeIds" multiple placeholder="选择工单类型（可多选）" style="width: 100%" @change="loadFilteredJobTypes">
             <el-option v-for="tt in ticketTypes" :key="tt.id" :label="tt.name" :value="tt.id" />
           </el-select>
         </el-form-item>
@@ -613,6 +751,18 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
               </el-checkbox-group>
             </div>
           </div>
+        </el-form-item>
+        <el-form-item label="负责区域">
+          <el-select v-model="form.areaIds" multiple placeholder="选择负责区域（可多选）" style="width: 100%">
+            <el-option v-for="a in areas" :key="a.id" :label="a.name" :value="a.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="负责楼栋" v-if="form.areaIds.length">
+          <el-select v-model="form.buildingIds" multiple placeholder="选择负责楼栋（可多选，不选则该区域下所有楼栋）" style="width: 100%">
+            <el-option-group v-for="areaId in form.areaIds" :key="areaId" :label="areas.find(a=>a.id===areaId)?.name">
+              <el-option v-for="b in (buildingsByArea[areaId] || [])" :key="b.id" :label="b.name" :value="b.id" />
+            </el-option-group>
+          </el-select>
         </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" placeholder="请输入备注" /></el-form-item>
       </el-form>
@@ -642,10 +792,10 @@ onMounted(() => { loadData(); loadTicketTypes(); loadDepartments() })
         <h4 style="margin-top: 20px;">专业技能</h4>
         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
           <el-tag v-for="s in viewingPerson.specialties" :key="s" type="info">{{ s }}</el-tag>
-          <span v-if="!viewingPerson.specialties.length" style="color: #909399;">暂无</span>
+          <span v-if="!(viewingPerson.specialties?.length)" style="color: #909399;">暂无</span>
         </div>
         <h4 style="margin-top: 20px;">备份人员</h4>
-        <div v-if="viewingPerson.backups.length" style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <div v-if="(viewingPerson.backups?.length)" style="display: flex; flex-wrap: wrap; gap: 8px;">
           <el-tag v-for="b in viewingPerson.backups" :key="b.staffId" closable @close="handleRemoveBackup(viewingPerson.id, b.staffId)">{{ b.staffName }}</el-tag>
         </div>
         <span v-else style="color: #909399;">暂无备份人员</span>

@@ -3,6 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, View, Check, Close } from '@element-plus/icons-vue'
 import { masterApi } from '@/api/http'
+import { getRenovations, getRenovationById, createRenovation, updateRenovation, deleteRenovation, approveRenovation, rejectRenovation, completeRenovation } from '@/api/renovation'
+import { currentProject } from '@/stores/project'
 
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -58,13 +60,11 @@ const loadRooms = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/renovation-requests', {
-      params: {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize,
-        status: statusFilter.value,
-        keyword: keyword.value || undefined,
-      }
+    const res: any = await getRenovations({
+      status: statusFilter.value || undefined,
+      keyword: keyword.value || undefined,
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
     })
     if (res.success) {
       tableData.value = res.data || []
@@ -98,7 +98,7 @@ const openCreate = () => {
 
 const handleView = async (row: any) => {
   try {
-    const res: any = await masterApi.get(`/renovation-requests/${row.id}`)
+    const res: any = await getRenovationById(row.id)
     if (res.success) {
       detailData.value = res.data
       detailVisible.value = true
@@ -109,7 +109,7 @@ const handleView = async (row: any) => {
 const handleApprove = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认批准该装修申请？', '审批确认', { type: 'info' })
-    await masterApi.put(`/renovation-requests/${row.id}`, { status: 'approved' })
+    await approveRenovation(row.id)
     ElMessage.success('已批准')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -118,7 +118,7 @@ const handleApprove = async (row: any) => {
 const handleReject = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认拒绝该装修申请？', '审批确认', { type: 'warning' })
-    await masterApi.put(`/renovation-requests/${row.id}`, { status: 'rejected' })
+    await rejectRenovation(row.id)
     ElMessage.success('已拒绝')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -127,7 +127,7 @@ const handleReject = async (row: any) => {
 const handleComplete = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认标记为已完成？', '确认', { type: 'info' })
-    await masterApi.put(`/renovation-requests/${row.id}`, { status: 'completed' })
+    await completeRenovation(row.id)
     ElMessage.success('已标记完成')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -136,7 +136,7 @@ const handleComplete = async (row: any) => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除装修申请「${row.applicantName}」吗？`, '提示', { type: 'warning' })
-    await masterApi.delete(`/renovation-requests/${row.id}`)
+    await deleteRenovation(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '删除失败') }
@@ -157,12 +157,13 @@ const handleSave = async () => {
       StartDate: form.value.startDate || null,
       EndDate: form.value.endDate || null,
       Remarks: form.value.remarks || null,
+      ProjectCode: currentProject.value?.code || '',
     }
     if (isEdit.value && currentId.value) {
-      await masterApi.put(`/renovation-requests/${currentId.value}`, payload)
+      await updateRenovation(currentId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/renovation-requests', payload)
+      await createRenovation(payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

@@ -4,6 +4,7 @@ import { ticketApi, masterApi } from '../../api/http'
 import { ticketTypeApi } from '../../api/ticketType'
 import { getTickets } from '@/api/ticket'
 import axios from 'axios'
+import { initWebSocket, useWebSocket } from '@/stores/websocket'
 
 // 创建认证服务HTTP客户端（用于获取员工列表）
 const authHttp = axios.create({
@@ -165,6 +166,23 @@ const loadAreas = async () => {
   } catch {}
 }
 
+const loadBuildings = async () => {
+  try {
+    const r: any = await masterApi.get('/buildings')
+    if (r.success && r.data) buildings.value = r.data || []
+  } catch {}
+}
+
+const getAreaName = (areaId: number) => {
+  const a = areas.value.find(a => a.id === areaId)
+  return a ? a.name : '-'
+}
+
+const getBuildingName = (buildingId: number) => {
+  const b = buildings.value.find(b => b.id === buildingId)
+  return b ? b.name : '-'
+}
+
 const loadBuildingsForArea = async (areaId: number) => {
   buildings.value = []
   rooms.value = []
@@ -199,8 +217,8 @@ const loadData = async () => {
       calculateStats(tickets.value)
     }
   } catch (error: any) {
-    // API失败时静默使用模拟数据，不显示网络错误
-    tickets.value = getMockData()
+    // API失败时显示错误提示
+    tickets.value = []; ElMessage.error('工单列表加载失败')
     total.value = tickets.value.length
     calculateStats(tickets.value)
   }
@@ -218,14 +236,6 @@ const calculateStats = (data: any[]) => {
   }
 }
 
-// 模拟数据
-const getMockData = () => [
-  { id: 1, ticketNumber: 'TK-2026-0001', title: 'A栋电梯故障报修', description: '电梯门无法关闭，存在安全隐患', type: 'Repair', priority: 'High', status: 'Open', creatorName: '王先生', assigneeName: null, createdAt: '2026-04-21 08:30', updatedAt: '2026-04-21 08:30' },
-  { id: 2, ticketNumber: 'TK-2026-0002', title: '门禁卡消磁补办', description: '业主反映门禁卡无法刷卡', type: 'Access', priority: 'Medium', status: 'Processing', creatorName: '李女士', assigneeName: '张师傅', createdAt: '2026-04-21 09:15', updatedAt: '2026-04-21 10:00' },
-  { id: 3, ticketNumber: 'TK-2026-0003', title: '公共区域路灯不亮', description: '夜间路灯熄灭，影响住户出行', type: 'Repair', priority: 'Low', status: 'Resolved', creatorName: '赵先生', assigneeName: '李师傅', createdAt: '2026-04-20 16:20', updatedAt: '2026-04-20 18:30' },
-  { id: 4, ticketNumber: 'TK-2026-0004', title: '水管漏水报修', description: 'B栋走廊水管接头处漏水', type: 'Repair', priority: 'High', status: 'Open', creatorName: '张先生', assigneeName: null, createdAt: '2026-04-21 07:45', updatedAt: '2026-04-21 07:45' },
-  { id: 5, ticketNumber: 'TK-2026-0005', title: '监控摄像头遮挡', description: '树枝遮挡了摄像头视野', type: 'Security', priority: 'Medium', status: 'Closed', creatorName: '刘经理', assigneeName: '保安队', createdAt: '2026-04-19 14:00', updatedAt: '2026-04-20 09:00' }
-]
 
 // 搜索和筛选
 // 统计卡片点击筛选
@@ -359,8 +369,8 @@ const handleSubmit = async () => {
       RoomId: selectedRoomId.value || null,
       ContactPersonName: form.value.contactName || null,
       ContactPhone: form.value.contactPhone || null,
-      Location: form.value.locationId ? `location_${form.value.locationId}` : null,
-      JobTypeIds: form.value.jobTypeId ? [form.value.jobTypeId] : null,
+      Location: `${areas.value.find(a => a.id === form.value.areaId)?.name || ''}${buildings.value.find(b => b.id === form.value.buildingId)?.name || ''}${rooms.value.find(r => r.id === selectedRoomId.value)?.roomNumber || ''}` || null,
+      jobTypeId: form.value.jobTypeId || null,
     }
     if (editingId.value) {
       await ticketApi.put(`/api/tenant/tickets/${editingId.value}`, payload)
@@ -503,11 +513,37 @@ const getTypeLabel = (type: string) => {
   return config ? config.label : type
 }
 
+// 获取工种名称列表（根据 JobTypeIds）
+const getJobTypeNames = (jobTypeIds: any) => {
+  if (!jobTypeIds) return '-'
+  try {
+    const ids = typeof jobTypeIds === 'string' ? JSON.parse(jobTypeIds) : jobTypeIds
+    if (!Array.isArray(ids) || ids.length === 0) return '-'
+    const names = ids.map((id: number) => {
+      const job = jobTypes.value.find(j => j.id === id)
+      return job ? job.name : ''
+    }).filter(Boolean)
+    return names.join(', ') || '-'
+  } catch {
+    return '-'
+  }
+}
+
 onMounted(() => {
   loadData()
   loadTicketTypes()
   loadJobTypes()
   loadAreas()
+  loadBuildings()
+  
+  // 初始化 WebSocket，监听工单更新
+  initWebSocket()
+  const { on } = useWebSocket()
+  on('ticketUpdated', (data: any) => {
+    console.log('[TicketList] Ticket updated:', data)
+    // 工单更新时自动刷新列表
+    loadData()
+  })
 })
 </script>
 
@@ -611,6 +647,7 @@ onMounted(() => {
           <template #default="{ row }">
             <span v-if="field.key === 'ticketCode'" class="ticket-number">{{ row.ticketCode }}</span>
             <span v-else-if="field.key === 'category'">{{ getTypeLabel(row.category) }}</span>
+            <span v-else-if="field.key === 'jobTypeIds'">{{ getJobTypeNames(row.jobTypeIds) }}</span>
             <span v-else-if="field.key === 'status'">
               <el-tag :type="getStatusConfig(row.status).type" size="small">
                 {{ getStatusConfig(row.status).label }}
@@ -622,14 +659,16 @@ onMounted(() => {
               </el-tag>
             </span>
             <span v-else-if="field.key === 'createdAt'">{{ formatDateTime(row.createdAt) }}</span>
+            <span v-else-if="field.key === 'areaId'">{{ getAreaName(row.areaId) }}</span>
+            <span v-else-if="field.key === 'buildingId'">{{ getBuildingName(row.buildingId) }}</span>
             <span v-else>{{ row[field.key] || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="260" fixed="right" align="center">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click.stop="handleView(row)">详情</el-button>
-            <el-button link type="info" size="small" v-if="row.status === 'Open'" @click.stop="openAssignDialog(row)">指派</el-button>
-            <el-button link type="warning" size="small" v-if="row.status === 'Open'" @click.stop="handleProcess(row)">处理</el-button>
+            <el-button link type="info" size="small" v-if="['New', 'Open'].includes(row.status)" @click.stop="openAssignDialog(row)">指派</el-button>
+            <el-button link type="warning" size="small" v-if="['New', 'Open', 'Processing'].includes(row.status)" @click.stop="handleProcess(row)">处理</el-button>
             <el-button link type="success" size="small" v-if="row.status === 'Processing'" @click.stop="handleResolve(row)">完成</el-button>
             <el-button link type="danger" size="small" v-if="row.status !== 'Closed'" @click.stop="handleDelete(row)">删除</el-button>
           </template>
@@ -748,8 +787,12 @@ onMounted(() => {
               {{ getPriorityConfig(viewingTicket.priority).label }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ viewingTicket.creatorName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="联系人">{{ viewingTicket.contactPersonName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDateTime(viewingTicket.createdAt) }}</el-descriptions-item>
+          <el-descriptions-item label="派单时间">{{ formatDateTime(viewingTicket.assignedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="开始处理">{{ formatDateTime(viewingTicket.startedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间">{{ formatDateTime(viewingTicket.finishedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="确认完成">{{ formatDateTime(viewingTicket.completedAt) }}</el-descriptions-item>
           <el-descriptions-item label="描述" :span="2">{{ viewingTicket.description }}</el-descriptions-item>
           <el-descriptions-item label="联系人">{{ viewingTicket.contactName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="联系电话">{{ viewingTicket.contactPhone || '-' }}</el-descriptions-item>
@@ -757,7 +800,7 @@ onMounted(() => {
       </template>
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
-        <el-button type="primary" v-if="viewingTicket?.status === 'Open'" @click="handleProcess(viewingTicket); detailDialogVisible = false">开始处理</el-button>
+        <el-button type="primary" v-if="['New', 'Open', 'Processing'].includes(viewingTicket?.status)" @click="handleProcess(viewingTicket); detailDialogVisible = false">开始处理</el-button>
         <el-button type="success" v-if="viewingTicket?.status === 'Processing'" @click="handleResolve(viewingTicket); detailDialogVisible = false">完成工单</el-button>
       </template>
     </el-dialog>

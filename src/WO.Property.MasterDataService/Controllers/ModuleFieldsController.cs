@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
 using WO.Property.MasterDataService.DTOs;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -9,6 +10,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 模块字段关联管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/module-fields")]
 public class ModuleFieldsController : ControllerBase
 {
@@ -32,8 +34,8 @@ public class ModuleFieldsController : ControllerBase
         var sql = @"SELECT mf.*, fd.FieldKey, fd.DisplayName, fd.FieldType, fd.Source, fd.IsShared, 
                     fd.Module AS FieldModule, fd.Options, fd.DefaultValue, fd.IsRequired, fd.Width, 
                     fd.SortOrder AS FieldSortOrder, fd.Status, fd.CreatedAt AS FieldCreatedAt, fd.UpdatedAt
-                    FROM ModuleFields mf
-                    INNER JOIN FieldDefinitions fd ON mf.FieldDefinitionId = fd.Id
+                    FROM module_fields mf
+                    INNER JOIN field_definitions fd ON mf.FieldDefinitionId = fd.Id
                     WHERE mf.Module = @module
                     ORDER BY mf.SortOrder, mf.Id";
 
@@ -63,8 +65,8 @@ public class ModuleFieldsController : ControllerBase
     {
         var sql = @"SELECT fd.FieldKey, fd.DisplayName, fd.FieldType, fd.IsShared,
                     mf.Alias, mf.OwnerModule, mf.IsEditable, mf.IsVisible
-                    FROM ModuleFields mf
-                    INNER JOIN FieldDefinitions fd ON mf.FieldDefinitionId = fd.Id
+                    FROM module_fields mf
+                    INNER JOIN field_definitions fd ON mf.FieldDefinitionId = fd.Id
                     WHERE mf.Module = @module AND mf.IsVisible = 1
                     ORDER BY mf.SortOrder, mf.Id";
 
@@ -104,7 +106,7 @@ public class ModuleFieldsController : ControllerBase
     public async Task<IActionResult> Add([FromBody] AddModuleFieldRequest request)
     {
         // 检查字段定义是否存在
-        using (var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM FieldDefinitions WHERE Id = @id", _db))
+        using (var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM field_definitions WHERE Id = @id", _db))
         {
             checkCmd.Parameters.AddWithValue("@id", request.FieldDefinitionId);
             var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0;
@@ -113,7 +115,7 @@ public class ModuleFieldsController : ControllerBase
         }
 
         // 检查是否已存在相同的模块-字段关联
-        using (var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM ModuleFields WHERE Module = @module AND FieldDefinitionId = @fieldDefinitionId", _db))
+        using (var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM module_fields WHERE Module = @module AND FieldDefinitionId = @fieldDefinitionId", _db))
         {
             checkCmd.Parameters.AddWithValue("@module", request.Module);
             checkCmd.Parameters.AddWithValue("@fieldDefinitionId", request.FieldDefinitionId);
@@ -122,7 +124,7 @@ public class ModuleFieldsController : ControllerBase
                 return BadRequest(new { Success = false, Message = "该字段已在模块中使用" });
         }
 
-        var insertSql = @"INSERT INTO ModuleFields 
+        var insertSql = @"INSERT INTO module_fields 
             (Module, FieldDefinitionId, IsVisible, IsActive, SortOrder, CreatedAt, OwnerModule, IsEditable) 
             VALUES (@Module, @FieldDefinitionId, @IsVisible, @IsActive, @SortOrder, @CreatedAt, @OwnerModule, @IsEditable);
             SELECT LAST_INSERT_ID();";
@@ -155,7 +157,7 @@ public class ModuleFieldsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Remove(int id)
     {
-        using var cmd = new MySqlCommand("DELETE FROM ModuleFields WHERE Id = @id", _db);
+        using var cmd = new MySqlCommand("DELETE FROM module_fields WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         var affected = await cmd.ExecuteNonQueryAsync();
 
@@ -215,7 +217,7 @@ public class ModuleFieldsController : ControllerBase
         if (!updates.Any())
             return Ok(new { Success = true, Message = "没有需要更新的字段" });
 
-        var sql = $"UPDATE ModuleFields SET {string.Join(", ", updates)} WHERE Id = @id";
+        var sql = $"UPDATE module_fields SET {string.Join(", ", updates)} WHERE Id = @id";
         using var cmd = new MySqlCommand(sql, _db);
         foreach (var p in parameters) cmd.Parameters.Add(p);
         var affected = await cmd.ExecuteNonQueryAsync();

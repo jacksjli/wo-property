@@ -7,6 +7,7 @@ import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
 import {
   getAllTimeoutRules,
+  loadTimeoutRulesFromApi,
   updateTimeoutRuleById,
   resetTimeoutRules,
   timeoutColorLabels,
@@ -17,6 +18,8 @@ import {
   type TimeoutColor,
   type TimeoutRole
 } from '@/stores/timeout'
+
+import { onMounted } from 'vue'
 
 // 权限验证
 const { verifyAdminPassword } = usePermission()
@@ -40,7 +43,18 @@ const refreshFields = () => {
 }
 
 // 数据
-const timeoutRules = ref<TimeoutRule[]>(getAllTimeoutRules())
+const timeoutRules = ref<TimeoutRule[]>([])
+
+// 加载数据
+const loadData = async () => {
+  await loadTimeoutRulesFromApi()
+  timeoutRules.value = getAllTimeoutRules()
+}
+
+// 挂载时加载
+onMounted(() => {
+  loadData()
+})
 
 // 颜色列表
 const colors: TimeoutColor[] = ['green', 'blue', 'orange', 'red']

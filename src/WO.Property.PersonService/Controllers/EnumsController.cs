@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using System.Text.RegularExpressions;
 
 namespace WO.Property.PersonService.Controllers;
 
@@ -12,6 +13,15 @@ public class EnumsController : ControllerBase
     public EnumsController(IConfiguration config)
     {
         _connectionString = "Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;";
+    }
+
+    /// <summary>
+    /// 转换为 camelCase
+    /// </summary>
+    private static string ToCamelCase(string str)
+    {
+        if (string.IsNullOrEmpty(str)) return str;
+        return Regex.Replace(str, "_([a-z])", m => m.Groups[1].Value.ToUpper());
     }
 
     [HttpGet("departments")]
@@ -28,8 +38,9 @@ public class EnumsController : ControllerBase
             var row = new Dictionary<string, object>();
             for (int i = 0; i < reader.FieldCount; i++)
             {
+                var colName = ToCamelCase(reader.GetName(i));
                 var val = reader.GetValue(i);
-                row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                row[colName] = val == DBNull.Value ? null : val;
             }
             items.Add(row);
         }
@@ -50,8 +61,9 @@ public class EnumsController : ControllerBase
             var row = new Dictionary<string, object>();
             for (int i = 0; i < reader.FieldCount; i++)
             {
+                var colName = ToCamelCase(reader.GetName(i));
                 var val = reader.GetValue(i);
-                row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                row[colName] = val == DBNull.Value ? null : val;
             }
             items.Add(row);
         }

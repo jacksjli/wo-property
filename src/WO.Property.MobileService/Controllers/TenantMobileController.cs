@@ -13,14 +13,27 @@ namespace WO.Property.MobileService.Controllers;
 [Route("api/tenant/mobiles")]
 public class TenantMobileController : ControllerBase
 {
-    private readonly TenantDbContextFactory _dbContextFactory;
-
-    public TenantMobileController(TenantDbContextFactory dbContextFactory)
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
     {
-        _dbContextFactory = dbContextFactory;
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
     }
 
-    private TenantDbContext CreateDbContext() => _dbContextFactory.CreateDbContext();
+
+    private readonly IDbContextFactory<TenantDbContext> _dbFactory;
+
+    public TenantMobileController(IDbContextFactory<TenantDbContext> dbFactory)
+    {
+        _dbFactory = dbFactory;
+    }
+
+    private TenantDbContext CreateDbContext() => _dbFactory.CreateDbContext();
 
     #region QuickEntries
 
@@ -208,6 +221,12 @@ public class TenantMobileController : ControllerBase
         await using var context = CreateDbContext();
         var query = context.Notifications.AsQueryable();
         
+        var projectCode = GetProjectCode();
+        if (!string.IsNullOrEmpty(projectCode))
+        {
+            query = query.Where(x => x.ProjectCode == projectCode);
+        }
+
         if (!string.IsNullOrWhiteSpace(userId))
             query = query.Where(n => n.UserId == userId || n.UserId == null);
         if (unreadOnly == true)

@@ -22,17 +22,13 @@ public class TenantDbContextFactory : IDbContextFactory<TenantDbContext>
         if (string.IsNullOrEmpty(tenantCode))
             throw new InvalidOperationException("Tenant code not set in AsyncLocal context");
 
-        var connectionString = BuildConnectionString(tenantCode);
-        var serverVersion = ServerVersion.AutoDetect(connectionString);
+        // 使用 TenantDbFactory 解析 project_code → actual database name
+        var connectionString = _tenantDbFactory.GetTenantConnectionString(tenantCode);
+        var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
         var options = new DbContextOptionsBuilder<TenantDbContext>()
             .UseMySql(connectionString, serverVersion)
             .Options;
 
         return new TenantDbContext(options, _tenantDbFactory, _logger);
-    }
-
-    private string BuildConnectionString(string tenantCode)
-    {
-        return $"Server=127.0.0.1;Port=3306;Database={tenantCode};User=root;Password=;CharSet=utf8mb4;";
     }
 }

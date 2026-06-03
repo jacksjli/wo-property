@@ -2,7 +2,17 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, View, Check, Star } from '@element-plus/icons-vue'
-import { masterApi, cleaningApi } from '@/api/http'
+import { masterApi } from '@/api/http'
+import { currentProject } from '@/stores/project'
+import {
+  getCleanings,
+  getCleaningById,
+  createCleaning,
+  updateCleaning,
+  deleteCleaning,
+  assignCleaning,
+  completeCleaning,
+} from '@/api/cleaning'
 
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -48,12 +58,11 @@ const loadBuildings = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await cleaningApi.get('/tasks', {
-      params: {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize,
-        status: statusFilter.value || undefined,
-      }
+    const res: any = await getCleanings({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      status: statusFilter.value || undefined,
+      keyword: keyword.value || undefined,
     })
     if (res.success) {
       tableData.value = res.data || []
@@ -75,15 +84,19 @@ const openCreate = () => {
 }
 
 const handleView = async (row: any) => {
-  // 使用行数据作为详情（后端无单独 GET /tasks/{id} 端点）
-  detailData.value = row
-  detailVisible.value = true
+  try {
+    const res: any = await getCleaningById(row.id)
+    if (res.success) {
+      detailData.value = res.data
+      detailVisible.value = true
+    }
+  } catch (e: any) { ElMessage.error(e.message || '加载详情失败') }
 }
 
 const handleStart = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认开始执行清洁？', '确认', { type: 'info' })
-    await cleaningApi.put(`/tasks/${row.id}/status`, { status: 'in_progress' })
+    await assignCleaning(row.id, row.assigneeId || 0)
     ElMessage.success('已开始执行')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -92,7 +105,7 @@ const handleStart = async (row: any) => {
 const handleComplete = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认清洁已完成？', '确认完成', { type: 'success' })
-    await cleaningApi.put(`/tasks/${row.id}/status`, { status: 'completed', actualDate: new Date().toISOString().split('T')[0] })
+    await completeCleaning(row.id)
     ElMessage.success('已标记完成')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -101,7 +114,7 @@ const handleComplete = async (row: any) => {
 const handleQualityIssue = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认存在质量问题？', '质量问题', { type: 'warning' })
-    await cleaningApi.put(`/tasks/${row.id}/status`, { status: 'quality_issue' })
+    await updateCleaning(row.id, { status: 'quality_issue' })
     ElMessage.warning('已标记质量问题')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -110,7 +123,7 @@ const handleQualityIssue = async (row: any) => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除清洁记录「${row.cleaningArea}」吗？`, '提示', { type: 'warning' })
-    await cleaningApi.delete(`/tasks/${row.id}`)
+    await deleteCleaning(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '删除失败') }
@@ -132,10 +145,10 @@ const handleSave = async () => {
       remarks: form.value.remarks || undefined,
     }
     if (isEdit.value && currentId.value) {
-      await cleaningApi.put(`/tasks/${currentId.value}/status`, { remarks: form.value.remarks })
+      await updateCleaning(currentId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await cleaningApi.post('/tasks', payload)
+      await createCleaning(payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

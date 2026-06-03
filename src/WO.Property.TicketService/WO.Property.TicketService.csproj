@@ -16,8 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WO.Property.Shared\WO.Property.Shared.csproj" />
-
-</ItemGroup>
+  </ItemGroup>
 
 
 </Project>

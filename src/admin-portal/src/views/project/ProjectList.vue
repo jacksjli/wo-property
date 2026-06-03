@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Delete, Setting, Check, InfoFilled, ArrowLeft, ArrowRight, View, Monitor, Tickets, Box, Document, Money, Location, Warning, Key, User, Bell, DataAnalysis, UserFilled, House, CreditCard, Odometer, Tools, Folder } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { currentProject, projects, allModules, getProjectModules, enterProject, exitProject as exitProjectStore, toggleProjectStatus, saveProjectsConfig } from '@/stores/project'
+import { currentProject, projects, allModules, getProjectModules, enterProject, exitProject as exitProjectStore, toggleProjectStatus } from '@/stores/project'
 
 const router = useRouter()
 const route = useRoute()
@@ -192,7 +192,6 @@ const toggleModule = async (moduleName: string) => {
     console.error('同步模块到后端失败', e)
   }
   
-  saveProjectsConfig()
   ElMessage.success('模块配置已保存')
 }
 
@@ -353,7 +352,17 @@ const loadProjects = async () => {
 
 // 组件挂载时自动加载项目
 onMounted(() => {
-  loadProjects()
+  // 从 store 获取已登录保存的项目列表
+  // 如果 store 为空（直接访问 /project），从 localStorage 恢复
+  const pending = localStorage.getItem('pendingProjects')
+  if (pending && projects.value.length === 0) {
+    try {
+      const parsed = JSON.parse(pending)
+      projects.value = parsed
+    } catch (e) {
+      console.error('解析项目数据失败')
+    }
+  }
 })
 
 // 删除项目

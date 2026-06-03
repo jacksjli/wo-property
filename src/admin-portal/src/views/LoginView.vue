@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { auth } from '../api/auth'
-import ProjectSelectorDialog from '../components/ProjectSelectorDialog.vue'
+import { setProjects } from '../stores/project'
 
 const router = useRouter()
 
@@ -13,9 +13,6 @@ const loginForm = ref({
 })
 
 const loading = ref(false)
-const showProjectSelector = ref(false)
-const projectList = ref<Array<{ code: string; name: string; displayName?: string }>>([])
-const loginToken = ref('')
 
 const handleLogin = async () => {
   if (!loginForm.value.username || !loginForm.value.password) {
@@ -25,37 +22,46 @@ const handleLogin = async () => {
 
   loading.value = true
   try {
-    // Login via CenterService (5016) which returns project list
+    // Login via AuthService (5106) which returns project list
     const response = await auth.login(
       loginForm.value.username,
       loginForm.value.password
     )
 
     if (response.success && response.token) {
-      // Store auth info (use 'token' key for router guard compatibility)
+      // Store auth info
       localStorage.setItem('token', response.token)
       localStorage.setItem('user', JSON.stringify(response.user || response))
-      loginToken.value = response.token
-      
-      // Extract project list from response
-      // CenterService returns: { token, projects: [{code, name, ...}], user }
+      localStorage.setItem('tenantCode', response.tenantCode || 'wo_property')
+
+      // Extract real project list from AuthService response
       const projects = response.projects || []
-      
+
       if (projects.length === 0) {
         ElMessage.error('该账号没有可访问的项目')
         return
       }
-      
-      console.log('[Login] Projects:', JSON.stringify(projects))
-      console.log('[Login] showProjectSelector will be set to:', projects.length > 1)
-      console.log('[Login] projectList will be:', JSON.stringify(projects))
-      
-      if (projects.length === 1) {
+
+      // 给每个项目添加默认模块
+      const allModuleNames = ['工单管理', '设备管理', '物料管理', '合同管理', '财务管理', '巡检管理', '钥匙管理', '访客管理', '消息管理', '统计分析', '住户管理', '车位管理', '缴费管理', '人员管理', '派单规则', '超时设置', '工单类型', '项目跟踪', '权限控制', '清洁管理', '社区管理', '配送管理', '快递管理', '装修管理', '项目配置', '字段管理', '部门管理', '大区省市区', '区域管理', '楼栋管理', '房号管理', '工种管理', '供应商管理', '设备类型', '公告管理', '社区活动', '设备报表', '工单报表', '物料报表', '满意度调查', '采购订单', '库存事务', '枚举定义', '综合报表']
+
+      const projectsWithModules = projects.map((p: any) => ({
+        ...p,
+        status: 'Active',
+        modules: allModuleNames
+      }))
+
+      // 保存到 store
+      setProjects(projectsWithModules)
+
+      if (projectsWithModules.length === 1) {
         // Only one project - auto select
-        selectProject(projects[0])
+        localStorage.setItem('currentProject', JSON.stringify(projectsWithModules[0]))
+        ElMessage.success(`已进入项目：${projectsWithModules[0].name}`)
+        router.push('/')
       } else {
-        // Multiple projects - go directly to project selection page
-        localStorage.setItem('pendingProjects', JSON.stringify(projects))
+        // Multiple projects - go to project selection page
+        localStorage.setItem('pendingProjects', JSON.stringify(projectsWithModules))
         router.push('/project')
       }
     } else {
@@ -67,42 +73,17 @@ const handleLogin = async () => {
     loading.value = false
   }
 }
-
-const selectProject = (project: { code: string; name: string }) => {
-  console.log('[selectProject] called with:', project)
-  localStorage.setItem('currentProject', project.code)
-  localStorage.setItem('currentProjectName', project.name)
-  
-  showProjectSelector.value = false
-  ElMessage.success(`已进入项目：${project.name}`)
-  console.log('[selectProject] calling router.push("/")')
-  router.push('/project').then(() => {
-    console.log('[selectProject] navigation complete')
-  }).catch(err => {
-    console.error('[selectProject] navigation error:', err)
-  })
-}
-
-const handleProjectSelected = (project: { code: string; name: string }) => {
-  selectProject(project)
-}
 </script>
 
 <template>
   <div class="login-container">
     <div class="login-box">
-      <div class="login-header">
-        <el-icon size="48" color="#409eff"><House /></el-icon>
-        <h1>WO物业管理</h1>
-        <p>单租户多项目版</p>
-      </div>
-
+      <h1 class="title">WO 物业管理</h1>
       <el-form :model="loginForm" class="login-form">
         <el-form-item>
           <el-input
             v-model="loginForm.username"
             placeholder="用户名"
-            size="large"
             prefix-icon="User"
           />
         </el-form-item>
@@ -111,7 +92,6 @@ const handleProjectSelected = (project: { code: string; name: string }) => {
             v-model="loginForm.password"
             type="password"
             placeholder="密码"
-            size="large"
             prefix-icon="Lock"
             @keyup.enter="handleLogin"
           />
@@ -119,79 +99,49 @@ const handleProjectSelected = (project: { code: string; name: string }) => {
         <el-form-item>
           <el-button
             type="primary"
-            size="large"
+            class="login-button"
             :loading="loading"
             @click="handleLogin"
-            class="login-btn"
           >
-            登 录
+            登录
           </el-button>
         </el-form-item>
       </el-form>
-
-      <div class="login-footer">
-        <p>测试账号: admin/Admin@123</p>
-      </div>
     </div>
-
-    <!-- Project Selector Dialog -->
-    <ProjectSelectorDialog
-      v-model:visible="showProjectSelector"
-      :projects="projectList"
-      @select="handleProjectSelected"
-    />
   </div>
 </template>
 
 <style scoped>
 .login-container {
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .login-box {
-  width: 400px;
+  background: white;
   padding: 40px;
-  background: #fff;
   border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: 400px;
 }
 
-.login-header {
+.title {
   text-align: center;
   margin-bottom: 30px;
-}
-
-.login-header h1 {
-  margin: 15px 0 5px;
+  color: #333;
   font-size: 28px;
-  color: #303133;
-}
-
-.login-header p {
-  margin: 0;
-  color: #909399;
-  font-size: 14px;
 }
 
 .login-form {
   margin-top: 20px;
 }
 
-.login-btn {
+.login-button {
   width: 100%;
-}
-
-.login-footer {
-  margin-top: 20px;
-  text-align: center;
-}
-
-.login-footer p {
-  color: #c0c4cc;
-  font-size: 12px;
+  height: 40px;
+  font-size: 16px;
 }
 </style>

@@ -5,6 +5,7 @@ using WO.Property.CleaningService.Models;
 using WO.Property.CleaningService.Tenant;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.CleaningService.Controllers {
 
@@ -12,6 +13,7 @@ namespace WO.Property.CleaningService.Controllers {
 /// Phase 1 多租户清洁服务控制器
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/tenant/cleaning")]
 public class TenantCleaningController : ControllerBase
 {

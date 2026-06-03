@@ -24,12 +24,6 @@ public class ContractDbContext : DbContext
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.StartDate);
             entity.HasIndex(e => e.EndDate);
-            
-            entity.Property(e => e.Type)
-                .HasConversion<string>();
-            
-            entity.Property(e => e.Status)
-                .HasConversion<string>();
         });
         
         // Payment 配置
@@ -44,9 +38,6 @@ public class ContractDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ContractId)
                 .OnDelete(DeleteBehavior.Cascade);
-            
-            entity.Property(e => e.Status)
-                .HasConversion<string>();
         });
         
         // 种子数据
@@ -63,7 +54,7 @@ public class ContractDbContext : DbContext
             {
                 Id = 1,
                 ContractNumber = "HT-2026-0001",
-                Type = ContractType.Lease,
+                Type = "Lease",
                 Title = "A栋1001室租赁合同",
                 Description = "办公室租赁合同，建筑面积120平方米",
                 PartyA = "WO物业管理有限公司",
@@ -76,7 +67,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 StartDate = new DateTime(2026, 1, 1),
                 EndDate = new DateTime(2026, 12, 31),
-                Status = ContractStatus.Active,
+                Status = "Active",
                 CreatedAt = now,
                 UpdatedAt = now,
                 CreatedBy = "system"
@@ -85,7 +76,7 @@ public class ContractDbContext : DbContext
             {
                 Id = 2,
                 ContractNumber = "HT-2026-0002",
-                Type = ContractType.Property,
+                Type = "Property",
                 Title = "B栋物业服务合同",
                 Description = "年度物业服务合同，服务范围包括公共区域清洁、绿化维护等",
                 PartyA = "WO物业管理有限公司",
@@ -98,7 +89,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 StartDate = new DateTime(2026, 1, 1),
                 EndDate = new DateTime(2026, 12, 31),
-                Status = ContractStatus.Active,
+                Status = "Active",
                 CreatedAt = now,
                 UpdatedAt = now,
                 CreatedBy = "system"
@@ -107,7 +98,7 @@ public class ContractDbContext : DbContext
             {
                 Id = 3,
                 ContractNumber = "HT-2026-0003",
-                Type = ContractType.Maintenance,
+                Type = "Maintenance",
                 Title = "电梯维保合同",
                 Description = "3号楼2部电梯的季度维护保养合同",
                 PartyA = "电梯维保公司",
@@ -120,7 +111,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 StartDate = new DateTime(2026, 1, 1),
                 EndDate = new DateTime(2026, 6, 30),
-                Status = ContractStatus.ExpiringSoon,
+                Status = "ExpiringSoon",
                 CreatedAt = now,
                 UpdatedAt = now,
                 CreatedBy = "system"
@@ -129,7 +120,7 @@ public class ContractDbContext : DbContext
             {
                 Id = 4,
                 ContractNumber = "HT-2025-0099",
-                Type = ContractType.Service,
+                Type = "Service",
                 Title = "清洁服务合同(2025)",
                 Description = "2025年度公共区域清洁服务合同",
                 PartyA = "清洁服务公司",
@@ -142,7 +133,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 StartDate = new DateTime(2025, 1, 1),
                 EndDate = new DateTime(2025, 12, 31),
-                Status = ContractStatus.Expired,
+                Status = "Expired",
                 CreatedAt = now.AddYears(-1),
                 UpdatedAt = now.AddYears(-1),
                 CreatedBy = "system"
@@ -161,7 +152,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 DueDate = new DateTime(2026, 1, 15),
                 PaidDate = new DateTime(2026, 1, 10),
-                Status = PaymentStatus.Paid,
+                Status = "Paid",
                 CreatedAt = now,
                 UpdatedAt = now
             },
@@ -175,7 +166,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 DueDate = new DateTime(2026, 4, 15),
                 PaidDate = new DateTime(2026, 4, 5),
-                Status = PaymentStatus.Paid,
+                Status = "Paid",
                 CreatedAt = now,
                 UpdatedAt = now
             },
@@ -188,7 +179,7 @@ public class ContractDbContext : DbContext
                 Amount = 9000m,
                 Currency = "CNY",
                 DueDate = new DateTime(2026, 7, 15),
-                Status = PaymentStatus.Pending,
+                Status = "Pending",
                 CreatedAt = now,
                 UpdatedAt = now
             },
@@ -202,7 +193,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 DueDate = new DateTime(2026, 1, 31),
                 PaidDate = new DateTime(2026, 1, 20),
-                Status = PaymentStatus.Paid,
+                Status = "Paid",
                 CreatedAt = now,
                 UpdatedAt = now
             },
@@ -216,7 +207,7 @@ public class ContractDbContext : DbContext
                 Currency = "CNY",
                 DueDate = new DateTime(2026, 3, 31),
                 PaidDate = new DateTime(2026, 3, 25),
-                Status = PaymentStatus.Paid,
+                Status = "Paid",
                 CreatedAt = now,
                 UpdatedAt = now
             }

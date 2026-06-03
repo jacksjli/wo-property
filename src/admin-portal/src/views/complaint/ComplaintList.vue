@@ -5,7 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting } from '@element-plus/icons-vue'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { getComplaints, createComplaint, updateComplaint, deleteComplaint, getComplaintStats } from '@/api/complaint'
 
 const { verifyAdminPassword } = usePermission()
 const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
@@ -112,7 +112,7 @@ const loadData = async () => {
     if (filterType.value) params.type = filterType.value
     if (filterPriority.value) params.priority = filterPriority.value
     if (filterStatus.value) params.status = filterStatus.value
-    const res: any = await masterApi.get('/complaints', { params })
+    const res: any = await getComplaints(params)
     recordList.value = res.data || []
     total.value = res.total || 0
   } catch (e: any) {
@@ -180,10 +180,10 @@ const handleSubmit = async () => {
 
   try {
     if (editingId.value) {
-      await masterApi.put(`/complaints/${editingId.value}`, form.value)
+      await updateComplaint(editingId.value, form.value)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/complaints', form.value)
+      await createComplaint(form.value)
       ElMessage.success('添加成功')
     }
     await loadData()
@@ -196,7 +196,7 @@ const handleSubmit = async () => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除投诉 "${row.Title}" 吗？`, '提示', { type: 'warning' })
-    await masterApi.delete(`/complaints/${row.Id}`)
+    await deleteComplaint(row.Id)
     ElMessage.success('删除成功')
     await loadData()
   } catch (e: any) {

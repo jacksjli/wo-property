@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, View, Bell, Check } from '@element-plus/icons-vue'
 import { expressApi } from '@/api/express'
 import { masterApi } from '@/api/http'
+import { currentProject } from '@/stores/project'
 
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -94,7 +95,7 @@ const handleInform = async (row: any) => {
 const handlePickup = async (row: any) => {
   try {
     await ElMessageBox.confirm('确认该快递已取件？', '确认取件', { type: 'info' })
-    await expressApi.updateRecord(row.id, { status: 'picked', pickupTime: new Date().toISOString().split('T')[0] })
+    await expressApi.pickupRecord(row.id)
     ElMessage.success('已确认取件')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '操作失败') }
@@ -133,20 +134,13 @@ const handleSave = async () => {
       trackingNumber: form.value.trackingNumber || undefined,
       pickupCode: form.value.pickupCode || undefined,
       remarks: form.value.remarks || undefined,
+      ProjectCode: currentProject.value?.code || '',
     }
     if (isEdit.value && currentId.value) {
       await expressApi.updateRecord(currentId.value, { remarks: form.value.remarks })
       ElMessage.success('更新成功')
     } else {
-      await expressApi.createRecord({
-        roomId: form.value.roomId!,
-        recipientName: form.value.recipientName,
-        recipientPhone: form.value.recipientPhone || undefined,
-        courierCompany: form.value.courierCompany || undefined,
-        trackingNumber: form.value.trackingNumber || undefined,
-        pickupCode: form.value.pickupCode || undefined,
-        remarks: form.value.remarks || undefined,
-      })
+      await expressApi.createRecord(payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

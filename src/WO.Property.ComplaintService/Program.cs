@@ -37,7 +37,7 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 // 配置端口
-builder.WebHost.UseUrls("http://0.0.0.0:5011");
+builder.WebHost.UseUrls("http://0.0.0.0:5201");
 
 // Tenant 支持
 builder.Services.AddSingleton<TenantConfigLoader>();
@@ -46,6 +46,13 @@ builder.Services.AddSingleton<ITenantDbFactory, TenantDbFactory>();
 // 数据库连接字符串（支持 X-Project）
 var dbConnectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
     ?? "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4;AllowUserVariables=true";
+
+// Gateway HttpClient for event publishing
+builder.Services.AddHttpClient("Gateway", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5000");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 
 builder.Services.AddScoped<MySqlConnection>(sp => {
     var factory = sp.GetService<ITenantDbFactory>();

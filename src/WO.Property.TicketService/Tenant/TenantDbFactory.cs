@@ -1,9 +1,10 @@
 using System.Collections.Concurrent;
+using MySqlConnector;
 
 namespace WO.Property.TicketService.Tenant;
 
 /// <summary>
-/// 租户数据库工厂实现
+/// 租户数据库工厂实现（简化版 - 单租户单数据库）
 /// </summary>
 public class TenantDbFactory : ITenantDbFactory
 {
@@ -30,22 +31,19 @@ public class TenantDbFactory : ITenantDbFactory
         _currentTenantCode.Value = null;
     }
 
-    public string GetTenantConnectionString(string tenantCode)
+    public string GetTenantConnectionString(string projectCode)
     {
+        // 单租户模式，直接使用 wo_property 数据库
         var baseConnStr = _configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Default connection string not configured");
 
-        // X-Project header 传递项目名（如 wo_property），需要映射到实际数据库名（如 project_wo_property）
-        // 项目数据库命名规范：project_{project_code}
-        var databaseName = $"project_{tenantCode}";
-
+        // 替换数据库名为 wo_property
         var result = System.Text.RegularExpressions.Regex.Replace(
             baseConnStr,
             @"Database\s*=\s*[^;]+",
-            $"Database={databaseName}",
+            "Database=wo_property",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-        _logger.LogDebug("Generated connection string for tenant {TenantCode} -> database {Database}", tenantCode, databaseName);
         return result;
     }
 }

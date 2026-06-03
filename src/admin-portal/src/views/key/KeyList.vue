@@ -5,6 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting } from '@element-plus/icons-vue'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
+import { currentProject } from '@/stores/project'
 import { masterApi } from '@/api/http'
 
 const { verifyAdminPassword } = usePermission()
@@ -184,6 +185,7 @@ const handleSubmit = async () => {
     Remark: form.value.remark,
     LastBorrowTime: null,
     BorrowCount: 0,
+    ProjectCode: currentProject.value?.code || '',
   }
 
   try {

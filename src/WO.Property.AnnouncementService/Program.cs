@@ -16,7 +16,15 @@ using WO.Property.AnnouncementService.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 端口配置
 builder.WebHost.UseUrls("http://0.0.0.0:5511");
+
+// 添加连接字符串配置（供 TenantDbFactory 使用）
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4",
+    ["ConnectionStrings:CenterDb"] = "Server=127.0.0.1;Port=3306;Database=center_db;User=root;Password=;CharSet=utf8mb4"
+});
 
 builder.Services.AddDbContext<AnnouncementDbContext>(options =>
 {
@@ -41,6 +49,14 @@ builder.Services.ConfigureHttpJsonOptions(opts => {
     opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 builder.Services.AddControllers();
+
+// Gateway HttpClient for event publishing
+builder.Services.AddHttpClient("Gateway", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5000");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // Phase 1: 多租户连接字符串配置
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {

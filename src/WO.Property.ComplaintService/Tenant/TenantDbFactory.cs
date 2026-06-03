@@ -1,34 +1,27 @@
 using System.Collections.Concurrent;
+using MySqlConnector;
 
 namespace WO.Property.ComplaintService.Tenant;
 
 /// <summary>
-/// 租户数据库工厂实现
-/// 使用 TenantConfigLoader 从 config/tenant-mapping.json 读取配置
+/// 租户数据库工厂（简化版 - 单租户单数据库）
 /// </summary>
 public class TenantDbFactory : ITenantDbFactory
 {
-    private readonly TenantConfigLoader _configLoader;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<TenantDbFactory> _logger;
     private static readonly AsyncLocal<string?> _currentTenantCode = new();
 
-    public TenantDbFactory(TenantConfigLoader configLoader, ILogger<TenantDbFactory> logger)
+    public TenantDbFactory(IConfiguration configuration, ILogger<TenantDbFactory> logger)
     {
-        _configLoader = configLoader;
+        _configuration = configuration;
         _logger = logger;
     }
 
     public string? GetCurrentTenantCode() => _currentTenantCode.Value;
 
-    public void SetCurrentTenantCode(string tenantCode)
+    public void SetCurrentTenantCode(string? tenantCode)
     {
-        // 验证租户是否存在
-        if (!_configLoader.TenantExists(tenantCode))
-        {
-            _logger.LogWarning("租户 [{TenantCode}] 不存在于配置中", tenantCode);
-            throw new InvalidOperationException($"租户 [{tenantCode}] 不存在");
-        }
-
         _currentTenantCode.Value = tenantCode;
         _logger.LogDebug("TenantContext set: {TenantCode}", tenantCode);
     }
@@ -38,10 +31,19 @@ public class TenantDbFactory : ITenantDbFactory
         _currentTenantCode.Value = null;
     }
 
-    public string GetTenantConnectionString(string tenantCode)
+    public string GetTenantConnectionString(string projectCode)
     {
-        var connStr = _configLoader.BuildConnectionString(tenantCode);
-        _logger.LogDebug("Generated connection string for tenant {TenantCode}", tenantCode);
-        return connStr;
+        // 单租户模式，直接使用 wo_property 数据库
+        var baseConnStr = _configuration.GetConnectionString("Default")
+            ?? throw new InvalidOperationException("Default connection string not configured");
+
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            baseConnStr,
+            @"Database\s*=\s*[^;]+",
+            "Database=wo_property",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        _logger.LogDebug("Generated connection string for project {ProjectCode} -> database wo_property", projectCode);
+        return result;
     }
 }

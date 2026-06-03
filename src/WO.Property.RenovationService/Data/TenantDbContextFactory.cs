@@ -19,8 +19,10 @@ public class TenantDbContextFactory : IDbContextFactory<TenantDbContext>
         var tenantCode = _tenantDbFactory.GetCurrentTenantCode();
         if (string.IsNullOrEmpty(tenantCode))
             throw new InvalidOperationException("Tenant code not set");
-        var connStr = $"Server=127.0.0.1;Port=3306;Database={tenantCode};User=root;Password=;CharSet=utf8mb4;";
-        var serverVersion = ServerVersion.AutoDetect(connStr);
+        
+        // 使用 TenantDbFactory 解析 project_code → actual database name
+        var connStr = _tenantDbFactory.GetTenantConnectionString(tenantCode);
+        var serverVersion = new MySqlServerVersion(new Version(8, 0, 35));
         var options = new DbContextOptionsBuilder<TenantDbContext>()
             .UseMySql(connStr, serverVersion)
             .Options;

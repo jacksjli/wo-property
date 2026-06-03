@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
 using System.Text;
+using Microsoft.Extensions.Hosting;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WO.Property.Shared.Models;
@@ -44,10 +45,17 @@ builder.Services.AddHttpClient("PersonService", client =>
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
+// Gateway WebSocket Event HttpClient
+builder.Services.AddHttpClient("Gateway", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5000");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // DispatchService HttpClient
 builder.Services.AddHttpClient("DispatchService", client =>
 {
-    client.BaseAddress = new Uri("http://localhost:5003");
+    client.BaseAddress = new Uri("http://localhost:5241");
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
@@ -76,6 +84,8 @@ builder.Services.AddScoped<IDbContextFactory<TenantDbContext>>(sp =>
         sp.GetRequiredService<IConfiguration>()
     ));
 
+// 注册超时检测背景服务
+builder.Services.AddHostedService<TimeoutCheckerService>();
 
 var jwtIssuer = "wo-property-unified-auth";
 var jwtAudience = "wo-property-services";
@@ -106,7 +116,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
             "http://localhost:5173",
             "http://localhost:5174",
-            "http://localhost:5175"
+            "http://localhost:5175",
+            "http://192.168.1.3:5173"
         )
         .AllowAnyMethod()
         .AllowAnyHeader()
@@ -118,6 +129,7 @@ var app = builder.Build();
 
 
 app.UseCors("AllowAdminPortal");
+app.UseAuthentication();
 app.UseMiddleware<WO.Property.TicketService.Middleware.TenantRoutingMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
@@ -147,6 +159,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Ticket>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.ToTable("tickets");
             entity.Property(e => e.TicketCode).IsRequired().HasMaxLength(50).HasColumnName("TicketNumber");
             entity.Property(e => e.Title).HasColumnName("Title");
             entity.Property(e => e.Description).HasColumnName("Description");
@@ -159,14 +172,28 @@ public class AppDbContext : DbContext
             entity.Ignore(e => e.CreatedBy);
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.IsDeleted);
+            entity.Ignore(e => e.EscalationLevel);
+            entity.Ignore(e => e.CurrentRole);
+            entity.Ignore(e => e.LastEscalatedAt);
             entity.HasIndex(e => e.TicketCode);
             // 显式映射列名（数据库使用 snake_case）
             entity.Property(e => e.CreatorPersonId).HasColumnName("creator_id");
             entity.Property(e => e.AssigneePersonId).HasColumnName("assignee_id");
+            entity.Property(e => e.DispatchStatus).HasColumnName("dispatch_status");
             entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
             entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
             entity.Property(e => e.ContactPersonName).HasColumnName("ContactPersonName");
             entity.Property(e => e.ContactPhone).HasColumnName("ContactPhone");
+            entity.Property(e => e.TicketTypeId).HasColumnName("ticket_type_id");
+            entity.Property(e => e.AreaId).HasColumnName("area_id");
+            entity.Property(e => e.BuildingId).HasColumnName("BuildingId");
+            entity.Property(e => e.RoomId).HasColumnName("RoomId");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
+            entity.Property(e => e.AssignedAt).HasColumnName("assigned_at");
+            entity.Property(e => e.StartedAt).HasColumnName("started_at");
+            entity.Property(e => e.FinishedAt).HasColumnName("finished_at");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
         });
 
         modelBuilder.Entity<TicketProcessRecord>(entity =>
@@ -178,6 +205,7 @@ public class AppDbContext : DbContext
             // 显式映射列名（数据库使用 snake_case）
             entity.Property(e => e.TicketId).HasColumnName("ticket_id");
             entity.Property(e => e.OperatorId).HasColumnName("operator_id");
+            entity.Property(e => e.OperatorName).HasColumnName("operator_name");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
             entity.Property(e => e.FromStatus).HasColumnName("from_status");
             entity.Property(e => e.ToStatus).HasColumnName("to_status");
@@ -192,8 +220,17 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<DispatchTask>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.TaskNo).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.Status).HasMaxLength(20);
+            entity.ToTable("dispatch_records");
+            entity.Property(e => e.TaskNo).HasColumnName("ticket_code");
+            entity.Property(e => e.TicketId).HasColumnName("ticket_id");
+            entity.Property(e => e.AssignedToPersonId).HasColumnName("to_person_id");
+            entity.Property(e => e.AssignedTo).HasColumnName("to_person_name");
+            entity.Property(e => e.AssignedBy).HasColumnName("from_person_name");
+            entity.Property(e => e.AssignedAt).HasColumnName("dispatch_time");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Ignore(e => e.RuleId);
+            entity.Ignore(e => e.TimeoutAt);
+            entity.Ignore(e => e.Notes);
             entity.HasIndex(e => e.TicketId);
         });
 
@@ -226,16 +263,26 @@ public class Ticket : BaseEntity
     public int? AreaId { get; set; }
     public int? BuildingId { get; set; }
     public int? RoomId { get; set; }
-    public List<int>? JobTypeIds { get; set; }
+    public int? JobTypeId { get; set; }
     public string? Location { get; set; }
     public string? Images { get; set; }
     public int? CreatorPersonId { get; set; }
     public new string? CreatedBy { get; set; }
     public int? AssigneePersonId { get; set; }
     public int ProjectId { get; set; }
+    public string? ProjectCode { get; set; }  // 单租户多项目：项目代码
     public int? Rating { get; set; }
     public string? ContactPersonName { get; set; }  // 标准化：contact_name
     public string? ContactPhone { get; set; }          // 标准化：phone_number
+    public string? CurrentRole { get; set; } = "operator";
+    public int? EscalationLevel { get; set; } = 0;
+    public DateTime? LastEscalatedAt { get; set; }
+    // 工单处理时间节点
+    public DateTime? AssignedAt { get; set; }      // 派单时间
+    public DateTime? StartedAt { get; set; }      // 开始处理时间
+    public DateTime? FinishedAt { get; set; }     // 完成时间
+    public DateTime? CompletedAt { get; set; }     // 确认完成时间
+    public string? DispatchStatus { get; set; }    // 派工状态
 }
 
 public class TicketProcessRecord : BaseEntity
@@ -247,6 +294,39 @@ public class TicketProcessRecord : BaseEntity
     public string? FromStatus { get; set; }
     public string ToStatus { get; set; } = string.Empty;
     public string? Content { get; set; }
+}
+
+public class TimeoutRule
+{
+    public int Id { get; set; }
+    public string Color { get; set; } = "green";
+    public string Role { get; set; } = "operator";
+    public int Hours { get; set; } = 24;
+    public bool Enabled { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class TimeoutAlert
+{
+    public long Id { get; set; }
+    public int TicketId { get; set; }
+    public string TicketCode { get; set; } = string.Empty;
+    public long? DispatchRecordId { get; set; }
+    public string AlertType { get; set; } = "timeout";
+    public DateTime ExpectedTime { get; set; }
+    public DateTime? ActualTime { get; set; }
+    public int TimeoutMinutes { get; set; }
+    public int Level { get; set; } = 1;
+    public int NotifyTargetId { get; set; }
+    public string? NotifyTargetName { get; set; }
+    public long? NotificationId { get; set; }
+    public string Status { get; set; } = "Pending";
+    public DateTime? SentAt { get; set; }
+    public DateTime? ProcessedAt { get; set; }
+    public string TenantCode { get; set; } = string.Empty;
+    public int ProjectId { get; set; } = 1;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class DispatchTask : BaseEntity
@@ -284,6 +364,7 @@ public static class TicketStatusValues
     public const string Processing = "Processing";
     public const string Finished = "Finished";
     public const string Confirmed = "Confirmed";
+    public const string Survey_Pending = "Survey_Pending";
     public const string Closed = "Closed";
     public const string Cancelled = "Cancelled";
 }
@@ -301,6 +382,9 @@ public class CreateTicketRequest
     public List<string>? Images { get; set; }
     public string? ContactPersonName { get; set; }  // 标准化：contact_name
     public string? ContactPhone { get; set; }          // 标准化：phone_number
+    public int? AreaId { get; set; }
+    public int? BuildingId { get; set; }
+    public int? RoomId { get; set; }
 }
 
 public class DispatchRequest
@@ -449,6 +533,9 @@ public class TicketController : ControllerBase
             CategoryName = typeNames.GetValueOrDefault(t.Category ?? "", t.Category ?? ""),
             t.Location,
             t.CreatedAt,
+            t.AreaId,
+            t.BuildingId,
+            dispatchStatus = t.DispatchStatus,
             // 标准化字段（contact_name / phone_number）
             ContactPersonName = t.ContactPersonName,
             ContactPhone = t.ContactPhone,
@@ -459,7 +546,12 @@ public class TicketController : ControllerBase
             t.AssigneePersonId,
             AssigneeName = t.AssigneePersonId.HasValue
                 ? personNames.GetValueOrDefault(t.AssigneePersonId!.Value)
-                : null
+                : null,
+            // 工单处理时间
+            t.AssignedAt,
+            t.StartedAt,
+            t.FinishedAt,
+            t.CompletedAt
         }).ToList();
 
         return Ok(new { success = true, data = result, total });
@@ -522,6 +614,7 @@ public class TicketController : ControllerBase
 
     // 获取单个工单
     [HttpGet("tickets/{id}")]
+    [Authorize]
     public async Task<IActionResult> GetTicket(int id)
     {
         var ticket = await db.Tickets.FindAsync(id);
@@ -540,6 +633,7 @@ public class TicketController : ControllerBase
             ticket.Description,
             ticket.Category,
             ticket.Status,
+            dispatchStatus = ticket.DispatchStatus,
             ticket.Priority,
             ticket.Location,
             ticket.Images,
@@ -556,7 +650,12 @@ public class TicketController : ControllerBase
                 : null,
             ticket.Rating,
             ticket.CreatedAt,
-            ticket.UpdatedAt
+            ticket.UpdatedAt,
+            // 工单处理时间
+            ticket.AssignedAt,
+            ticket.StartedAt,
+            ticket.FinishedAt,
+            ticket.CompletedAt
         };
 
         return Ok(new { success = true, data = result });
@@ -598,13 +697,18 @@ public class TicketController : ControllerBase
             var dispatchPayload = new
             {
                 TicketId = ticket.Id,
+                TicketCode = ticket.TicketCode,
                 RuleId = request.RuleId,
                 AssignedToPersonId = request.AssigneeId,
                 AssignedTo = "",
-                TicketColor = ticketColor
+                TicketColor = ticketColor,
+                TicketTypeId = ticket.TicketTypeId ?? 0,
+                AreaId = ticket.AreaId ?? 0,
+                BuildingId = ticket.BuildingId ?? 0,
+                ProjectId = ticket.ProjectId
             };
 
-            var dispatchRequest = new HttpRequestMessage(HttpMethod.Post, "/api/dispatch-tasks")
+            var dispatchRequest = new HttpRequestMessage(HttpMethod.Post, "/api/tenant/dispatch/auto")
             {
                 Content = JsonContent.Create(dispatchPayload)
             };
@@ -626,6 +730,7 @@ public class TicketController : ControllerBase
         // 更新工单状态
         ticket.Status = TicketStatusValues.Dispatched;
         ticket.AssigneePersonId = request.AssigneeId;
+        ticket.AssignedAt = DateTime.UtcNow;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         // 记录处理历史
@@ -662,6 +767,7 @@ public class TicketController : ControllerBase
         var fromStatus = ticket.Status;
 
         ticket.Status = TicketStatusValues.Accepted;
+        ticket.StartedAt = DateTime.UtcNow;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         db.TicketProcessRecords.Add(new TicketProcessRecord
@@ -732,6 +838,7 @@ public class TicketController : ControllerBase
         var fromStatus = ticket.Status;
 
         ticket.Status = TicketStatusValues.Finished;
+        ticket.FinishedAt = DateTime.UtcNow;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         db.TicketProcessRecords.Add(new TicketProcessRecord
@@ -757,8 +864,8 @@ public class TicketController : ControllerBase
     {
         var ticket = await db.Tickets.FindAsync(id);
         if (ticket == null) return NotFound(new { success = false, message = "工单不存在" });
-        if (ticket.Status != TicketStatusValues.Finished)
-            return BadRequest(new { success = false, message = $"状态 {ticket.Status} 不能评价（需先完成）" });
+        if (ticket.Status != TicketStatusValues.Finished && ticket.Status != TicketStatusValues.Survey_Pending)
+            return BadRequest(new { success = false, message = $"状态 {ticket.Status} 不能评价（需先确认完工）" });
 
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var operatorId = int.TryParse(userId, out var oid) ? oid : 0;
@@ -768,6 +875,7 @@ public class TicketController : ControllerBase
 
         ticket.Status = TicketStatusValues.Closed;
         ticket.Rating = request.Rating;
+        ticket.CompletedAt = DateTime.UtcNow;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         db.TicketProcessRecords.Add(new TicketProcessRecord
@@ -803,7 +911,7 @@ public class TicketController : ControllerBase
 
         var fromStatus = ticket.Status;
 
-        ticket.Status = TicketStatusValues.Confirmed;
+        ticket.Status = TicketStatusValues.Survey_Pending;
         ticket.UpdatedAt = DateTime.UtcNow;
 
         db.TicketProcessRecords.Add(new TicketProcessRecord
@@ -813,7 +921,7 @@ public class TicketController : ControllerBase
             OperatorId = operatorId,
             OperatorName = operatorName,
             FromStatus = fromStatus,
-            ToStatus = TicketStatusValues.Confirmed,
+            ToStatus = TicketStatusValues.Survey_Pending,
             Content = request.Notes ?? "确认完工",
             CreatedAt = DateTime.UtcNow
         });
@@ -1175,5 +1283,194 @@ public class TicketController : ControllerBase
         }
 
         return (typeNames, priorityNames, statusNames);
+    }
+}
+
+// 超时检测背景服务
+public class TimeoutCheckerService : BackgroundService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<TimeoutCheckerService> _logger;
+    private readonly System.Timers.Timer _timer;
+    
+    private const int CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+    public TimeoutCheckerService(IServiceProvider serviceProvider, ILogger<TimeoutCheckerService> logger)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+        _timer = new System.Timers.Timer(CHECK_INTERVAL_MS);
+        _timer.Elapsed += async (s, e) => await CheckTimeoutsAsync();
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("TimeoutCheckerService started");
+        _timer.Start();
+        await CheckTimeoutsAsync();
+        
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(CHECK_INTERVAL_MS, stoppingToken);
+        }
+    }
+
+    private async Task CheckTimeoutsAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Checking ticket timeouts...");
+            
+            using var scope = _serviceProvider.CreateScope();
+            var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<TenantDbContext>>();
+            await using var db = await dbFactory.CreateDbContextAsync();
+
+            var timeoutRules = await db.TimeoutRules.Where(r => r.Enabled).ToListAsync();
+            if (!timeoutRules.Any())
+            {
+                _logger.LogWarning("No timeout rules found");
+                return;
+            }
+
+            var activeStatuses = new[] { "Created", "Dispatched", "Accepted", "Processing" };
+            var tickets = await db.Tickets.Where(t => activeStatuses.Contains(t.Status)).ToListAsync();
+
+            _logger.LogInformation("Found {Count} active tickets to check", tickets.Count);
+
+            foreach (var ticket in tickets)
+            {
+                await CheckTicketTimeout(db, ticket, timeoutRules);
+            }
+
+            await db.SaveChangesAsync();
+            _logger.LogInformation("Timeout check completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking timeouts");
+        }
+    }
+
+    private async Task CheckTicketTimeout(TenantDbContext db, Ticket ticket, List<TimeoutRule> rules)
+    {
+        try
+        {
+            var color = MapPriorityToColor(ticket.Priority);
+            var currentRole = ticket.CurrentRole ?? "operator";
+            
+            var rule = rules.FirstOrDefault(r => r.Color == color && r.Role == currentRole && r.Enabled);
+            if (rule == null)
+            {
+                rule = rules.FirstOrDefault(r => r.Color == color && r.Enabled);
+            }
+
+            if (rule == null) return;
+
+            var createdAt = ticket.CreatedAt;
+            var expectedTime = createdAt.AddHours(rule.Hours);
+            var now = DateTime.UtcNow;
+
+            if (now > expectedTime)
+            {
+                var roleLevel = GetRoleLevel(currentRole);
+                var existingAlert = await db.TimeoutAlerts
+                    .FirstOrDefaultAsync(a => a.TicketId == ticket.Id && a.Status == "Pending" && a.Level == roleLevel);
+
+                if (existingAlert == null)
+                {
+                    var alert = new TimeoutAlert
+                    {
+                        TicketId = ticket.Id,
+                        TicketCode = ticket.TicketCode,
+                        AlertType = "timeout",
+                        ExpectedTime = expectedTime,
+                        ActualTime = now,
+                        TimeoutMinutes = (int)(now - expectedTime).TotalMinutes,
+                        Level = roleLevel,
+                        NotifyTargetId = 0,
+                        NotifyTargetName = GetNextRoleName(currentRole),
+                        Status = "Pending",
+                        TenantCode = "YGHY001",
+                        ProjectId = ticket.ProjectId,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    db.TimeoutAlerts.Add(alert);
+                    
+                    _logger.LogWarning("Ticket {TicketCode} timeout! Color={Color}, Role={Role}, ExpectedTime={ExpectedTime}", 
+                        ticket.TicketCode, color, currentRole, expectedTime);
+
+                    await EscalateTicket(db, ticket, currentRole);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking ticket {TicketId} timeout", ticket.Id);
+        }
+    }
+
+    private async Task EscalateTicket(TenantDbContext db, Ticket ticket, string currentRole)
+    {
+        var nextRole = GetNextRole(currentRole);
+        if (nextRole != null)
+        {
+            ticket.CurrentRole = nextRole;
+            ticket.EscalationLevel = (ticket.EscalationLevel ?? 0) + 1;
+            ticket.LastEscalatedAt = DateTime.UtcNow;
+            
+            _logger.LogInformation("Ticket {TicketCode} escalated from {OldRole} to {NewRole}", 
+                ticket.TicketCode, currentRole, nextRole);
+        }
+    }
+
+    private string MapPriorityToColor(string? priority)
+    {
+        return priority?.ToLower() switch
+        {
+            "urgent" or "high" => "red",
+            "medium" or "normal" => "blue",
+            "low" => "green",
+            _ => "green"
+        };
+    }
+
+    private int GetRoleLevel(string role)
+    {
+        return role?.ToLower() switch
+        {
+            "operator" => 1,
+            "supervisor" => 2,
+            "manager" => 3,
+            "department_head" => 4,
+            "company_head" => 5,
+            _ => 1
+        };
+    }
+
+    private string? GetNextRole(string currentRole)
+    {
+        return currentRole?.ToLower() switch
+        {
+            "operator" => "supervisor",
+            "supervisor" => "manager",
+            "manager" => "department_head",
+            "department_head" => "company_head",
+            "company_head" => null,
+            _ => null
+        };
+    }
+
+    private string GetNextRoleName(string currentRole)
+    {
+        var nextRole = GetNextRole(currentRole);
+        return nextRole?.ToUpper() ?? "UNKNOWN";
+    }
+
+    public override void Dispose()
+    {
+        _timer.Stop();
+        _timer.Dispose();
+        base.Dispose();
     }
 }

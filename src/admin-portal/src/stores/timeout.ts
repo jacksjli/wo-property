@@ -1,13 +1,14 @@
 import { ref } from 'vue'
 import { roleLabels, type StaffRole } from '@/stores/staff'
+import http from '@/api/http'
 
 // 颜色类型
 export type TicketColor = 'green' | 'blue' | 'orange' | 'red'
-export type TimeoutColor = TicketColor  // 别名
+export type TimeoutColor = TicketColor
 
 // 角色类型
 export type StaffRoleType = StaffRole
-export type TimeoutRole = StaffRoleType  // 别名
+export type TimeoutRole = StaffRoleType
 
 // 颜色标签
 export const colorLabels: Record<TicketColor, string> = {
@@ -17,10 +18,8 @@ export const colorLabels: Record<TicketColor, string> = {
   red: '红色'
 }
 
-// 超时设置专用的颜色标签
 export const timeoutColorLabels = colorLabels
 
-// 颜色标签（带样式的tag对象）
 export const timeoutColorTags: Record<TicketColor, string> = {
   green: '',
   blue: 'primary',
@@ -28,7 +27,6 @@ export const timeoutColorTags: Record<TicketColor, string> = {
   red: 'danger'
 }
 
-// 角色标签
 export const timeoutRoleLabels: Record<StaffRoleType, string> = {
   operator: '操作员',
   supervisor: '主管',
@@ -37,7 +35,6 @@ export const timeoutRoleLabels: Record<StaffRoleType, string> = {
   company_head: '公司负责人'
 }
 
-// 颜色说明
 export const colorDescriptions: Record<TicketColor, string> = {
   green: '一般',
   blue: '普通',
@@ -45,7 +42,6 @@ export const colorDescriptions: Record<TicketColor, string> = {
   red: '紧急'
 }
 
-// 优先级 → 超时颜色 映射
 export const priorityToTimeoutColor: Record<string, TicketColor> = {
   'Urgent': 'red',
   'High': 'orange',
@@ -53,165 +49,158 @@ export const priorityToTimeoutColor: Record<string, TicketColor> = {
   'Low': 'green'
 }
 
-// 根据优先级获取超时颜色
 export const getTimeoutColorByPriority = (priority: string): TicketColor => {
   return priorityToTimeoutColor[priority] || 'blue'
 }
 
-// 超时配置（颜色 × 角色）
-export interface TimeoutRule {
-  hours: number       // 超时小时数
-  enabled: boolean    // 是否启用
+// 后端超时规则接口
+export interface BackendTimeoutRule {
+  id: number
+  color: string
+  role: string
+  hours: number
+  enabled: boolean
+  createdAt: string
+  updatedAt?: string
 }
 
-export type TimeoutConfig = Record<TicketColor, Record<StaffRoleType, TimeoutRule>>
-
-// 存储键名
-const STORAGE_KEY = 'wo_timeout_config'
-
-// 从 localStorage 加载数据
-const loadFromStorage = (): TimeoutConfig => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      // 确保数据格式正确
-      if (parsed && typeof parsed === 'object') {
-        return parsed
-      }
-    }
-  } catch (error) {
-    console.error('加载超时配置数据失败:', error)
-  }
-  return {} as TimeoutConfig
-}
-
-// 保存到 localStorage
-const saveToStorage = (data: TimeoutConfig) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  } catch (error) {
-    console.error('保存超时配置数据失败:', error)
-  }
-}
-
-// 默认超时配置
-const defaultTimeoutConfig: TimeoutConfig = {
-  green: {
-    operator: { hours: 24, enabled: true },
-    supervisor: { hours: 24, enabled: true },
-    manager: { hours: 24, enabled: true },
-    department_head: { hours: 24, enabled: true },
-    company_head: { hours: 24, enabled: true }
-  },
-  blue: {
-    operator: { hours: 12, enabled: true },
-    supervisor: { hours: 12, enabled: true },
-    manager: { hours: 12, enabled: true },
-    department_head: { hours: 12, enabled: true },
-    company_head: { hours: 12, enabled: true }
-  },
-  orange: {
-    operator: { hours: 6, enabled: true },
-    supervisor: { hours: 6, enabled: true },
-    manager: { hours: 6, enabled: true },
-    department_head: { hours: 6, enabled: true },
-    company_head: { hours: 6, enabled: true }
-  },
-  red: {
-    operator: { hours: 2, enabled: true },
-    supervisor: { hours: 2, enabled: true },
-    manager: { hours: 2, enabled: true },
-    department_head: { hours: 2, enabled: true },
-    company_head: { hours: 2, enabled: true }
-  }
-}
-
-// 超时配置数据
-const timeoutConfig = ref<TimeoutConfig>(loadFromStorage())
-
-// 如果没有数据，使用默认数据
-if (Object.keys(timeoutConfig.value).length === 0) {
-  timeoutConfig.value = defaultTimeoutConfig
-  saveToStorage(timeoutConfig.value)
-}
-
-// 获取配置
-export const getTimeoutConfig = () => timeoutConfig.value
-
-// 获取特定颜色和角色的超时规则
-export const getTimeoutRule = (color: TicketColor, role: StaffRoleType): TimeoutRule => {
-  return timeoutConfig.value[color][role]
-}
-
-// 更新特定颜色和角色的超时规则
-export const updateTimeoutRule = (color: TicketColor, role: StaffRoleType, rule: Partial<TimeoutRule>) => {
-  timeoutConfig.value[color][role] = { ...timeoutConfig.value[color][role], ...rule }
-  saveToStorage(timeoutConfig.value)  // 自动保存
-}
-
-// 更新整个配置
-export const updateTimeoutConfig = (config: Partial<TimeoutConfig>) => {
-  timeoutConfig.value = { ...timeoutConfig.value, ...config }
-  saveToStorage(timeoutConfig.value)  // 自动保存
-}
-
-// 重置为默认
-export const resetTimeoutConfig = () => {
-  timeoutConfig.value = JSON.parse(JSON.stringify(defaultTimeoutConfig))
-  saveToStorage(timeoutConfig.value)  // 自动保存
-}
-
-// 获取所有颜色
-export const getAllColors = (): TicketColor[] => ['green', 'blue', 'orange', 'red']
-
-// 获取所有角色
-export const getAllRoles = (): StaffRoleType[] => ['operator', 'supervisor', 'manager', 'department_head', 'company_head']
-
-// 超时规则接口（用于表格展示）
+// 前端展示用接口
 export interface TimeoutRuleDisplay {
   id: string
   color: TicketColor
-  role: StaffRoleType
+  role: TimeoutRole
   hours: number
   enabled: boolean
 }
 
-// 获取所有超时规则（扁平化格式）
+// 存储键名
+const STORAGE_KEY = 'wo_timeout_config_cache'
+
+// 从 localStorage 加载缓存
+const loadFromStorage = (): TimeoutRuleDisplay[] | null => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      return JSON.parse(saved)
+    }
+  } catch {}
+  return null
+}
+
+// 保存到 localStorage
+const saveToStorage = (rules: TimeoutRuleDisplay[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rules))
+  } catch {}
+}
+
+// 超时规则数据
+const timeoutRules = ref<TimeoutRuleDisplay[]>(loadFromStorage() || [])
+
+// 标记是否已加载
+let isLoaded = false
+
+// 获取所有超时规则
 export const getAllTimeoutRules = (): TimeoutRuleDisplay[] => {
+  return timeoutRules.value
+}
+
+// 从后端加载数据
+export const loadTimeoutRulesFromApi = async () => {
+  try {
+    const res = await http.get('/api/timeout/rules')
+    if (res.success && res.data) {
+      timeoutRules.value = res.data.map((rule: BackendTimeoutRule) => ({
+        id: `${rule.color}-${rule.role}`,
+        color: rule.color as TicketColor,
+        role: rule.role as TimeoutRole,
+        hours: rule.hours,
+        enabled: rule.enabled
+      }))
+      saveToStorage(timeoutRules.value)
+      isLoaded = true
+    }
+  } catch (error) {
+    console.error('加载超时规则失败:', error)
+    // 使用缓存
+    if (timeoutRules.value.length === 0) {
+      timeoutRules.value = getDefaultRules()
+    }
+  }
+}
+
+// 获取默认规则
+const getDefaultRules = (): TimeoutRuleDisplay[] => {
+  const colors: TicketColor[] = ['green', 'blue', 'orange', 'red']
+  const roles: TimeoutRole[] = ['operator', 'supervisor', 'manager', 'department_head', 'company_head']
   const rules: TimeoutRuleDisplay[] = []
-  const colors = getAllColors()
-  const roles = getAllRoles()
+  
+  const defaultHours: Record<TicketColor, number> = {
+    green: 24,
+    blue: 12,
+    orange: 6,
+    red: 2
+  }
   
   colors.forEach(color => {
     roles.forEach(role => {
-      const rule = timeoutConfig.value[color]?.[role]
-      if (rule) {
-        rules.push({
-          id: `${color}-${role}`,
-          color,
-          role,
-          hours: rule.hours,
-          enabled: rule.enabled
-        })
-      }
+      rules.push({
+        id: `${color}-${role}`,
+        color,
+        role,
+        hours: defaultHours[color],
+        enabled: true
+      })
     })
   })
-  
   return rules
 }
 
 // 更新超时规则
-export const updateTimeoutRuleById = (id: string, updates: Partial<TimeoutRule>) => {
-  const [color, role] = id.split('-') as [TicketColor, StaffRoleType]
-  if (color && role) {
-    updateTimeoutRule(color, role, updates)
+export const updateTimeoutRuleById = async (id: string, updates: { hours?: number; enabled?: boolean }) => {
+  try {
+    // 从 id 解析 color 和 role
+    const [color, role] = id.split('-') as [TicketColor, TimeoutRole]
+    
+    // 找到对应的规则
+    const rule = timeoutRules.value.find(r => r.id === id)
+    if (!rule) return false
+    
+    // 调用后端 API
+    // 需要找到后端的 rule id (格式是 color-role，但后端是数字 id)
+    // 先查找后端规则
+    const res = await http.get('/api/timeout/rules')
+    if (res.success && res.data) {
+      const backendRule = res.data.find((r: BackendTimeoutRule) => 
+        r.color === color && r.role === role
+      )
+      if (backendRule) {
+        await http.put(`/api/timeout/rules/${backendRule.id}`, updates)
+      }
+    }
+    
+    // 更新本地数据
+    if (updates.hours !== undefined) rule.hours = updates.hours
+    if (updates.enabled !== undefined) rule.enabled = updates.enabled
+    
+    saveToStorage(timeoutRules.value)
+    return true
+  } catch (error) {
+    console.error('更新超时规则失败:', error)
+    return false
   }
 }
 
-// 重置超时规则（兼容组件）
-export const resetTimeoutRules = () => {
-  resetTimeoutConfig()
+// 重置为默认
+export const resetTimeoutRules = async () => {
+  try {
+    await http.post('/api/timeout/rules/reset', {})
+    await loadTimeoutRulesFromApi()
+    return true
+  } catch (error) {
+    console.error('重置超时规则失败:', error)
+    return false
+  }
 }
 
 // 格式化超时小时数
@@ -229,12 +218,12 @@ export const formatTimeoutHours = (hours: number): string => {
 }
 
 export const timeoutStore = {
-  timeoutConfig,
-  getTimeoutConfig,
-  getTimeoutRule,
-  updateTimeoutRule,
-  updateTimeoutConfig,
-  resetTimeoutConfig,
-  getAllColors,
-  getAllRoles
+  timeoutRules,
+  getAllTimeoutRules,
+  loadTimeoutRulesFromApi,
+  updateTimeoutRuleById,
+  resetTimeoutRules
 }
+
+// 初始化时自动加载
+loadTimeoutRulesFromApi()

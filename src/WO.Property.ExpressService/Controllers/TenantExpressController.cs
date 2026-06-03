@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WO.Property.ExpressService.Data;
 using WO.Property.ExpressService.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.ExpressService.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/tenant/express/express-records")]
 public class TenantExpressController : ControllerBase
 {

@@ -36,7 +36,7 @@ public class TenantDbFactory : ITenantDbFactory
             ?? throw new InvalidOperationException("Default connection string not configured");
 
         // 项目数据库命名规范：project_{project_code}
-        var databaseName = $"project_{tenantCode}";
+        var databaseName = $"wo_property";
 
         var result = System.Text.RegularExpressions.Regex.Replace(
             baseConnStr,

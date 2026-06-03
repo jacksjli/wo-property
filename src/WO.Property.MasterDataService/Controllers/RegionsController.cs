@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -7,6 +8,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 区域配置管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/regions")]
 public class RegionsController : ControllerBase
 {

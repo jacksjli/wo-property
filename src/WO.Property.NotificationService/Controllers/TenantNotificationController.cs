@@ -1,24 +1,69 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using WO.Property.NotificationService.Data;
 using WO.Property.NotificationService.Models;
+using System.Text;
 
 namespace WO.Property.NotificationService.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/tenant/notification")]
 public class TenantNotificationController : ControllerBase
 {
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
+
     private readonly IDbContextFactory<TenantDbContext> _dbFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TenantNotificationController> _logger;
 
-    public TenantNotificationController(IDbContextFactory<TenantDbContext> dbFactory, ILogger<TenantNotificationController> logger)
+    public TenantNotificationController(
+        IDbContextFactory<TenantDbContext> dbFactory,
+        IHttpClientFactory httpClientFactory,
+        ILogger<TenantNotificationController> logger)
     {
         _dbFactory = dbFactory;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
     private TenantDbContext CreateDbContext() => _dbFactory.CreateDbContext();
+
+    private async Task PublishNotificationEventAsync(string eventType, object data)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Gateway");
+            var payload = new
+            {
+                module = "notification",
+                eventType = eventType,
+                data = data
+            };
+            var content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(payload),
+                Encoding.UTF8,
+                "application/json"
+            );
+            await client.PostAsync("/internal/events/publish", content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to publish notification event: {EventType}", eventType);
+        }
+    }
 
     // GET /api/tenant/notification/notifications
     [HttpGet("notifications")]
@@ -28,6 +73,13 @@ public class TenantNotificationController : ControllerBase
         {
             using var db = CreateDbContext();
             var query = db.Notifications.AsQueryable();
+            
+            var projectCode = GetProjectCode();
+            if (!string.IsNullOrEmpty(projectCode))
+            {
+                query = query.Where(x => x.ProjectCode == projectCode);
+            }
+
             if (userId.HasValue)
                 query = query.Where(n => n.UserId == userId.Value || n.UserId == 0);
             var total = await query.CountAsync();
@@ -79,6 +131,18 @@ public class TenantNotificationController : ControllerBase
             };
             db.Notifications.Add(notification);
             await db.SaveChangesAsync();
+
+            // 发布通知创建事件
+            await PublishNotificationEventAsync("created", new
+            {
+                id = notification.Id,
+                userId = notification.UserId,
+                title = notification.Title,
+                content = notification.Content,
+                type = notification.Type,
+                isRead = notification.IsRead
+            });
+
             return Ok(new { success = true, message = "通知创建成功", data = new { id = notification.Id } });
         }
         catch (Exception ex)
@@ -100,11 +164,71 @@ public class TenantNotificationController : ControllerBase
             notification.IsRead = true;
             notification.ReadAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
+
+            // 发布通知已读事件
+            await PublishNotificationEventAsync("read", new
+            {
+                id = notification.Id,
+                userId = notification.UserId,
+                title = notification.Title
+            });
+
             return Ok(new { success = true, message = "已标记为已读" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "MarkAsRead failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // PUT /api/tenant/notification/notifications/{id}
+    [HttpPut("notifications/{id}")]
+    public async Task<IActionResult> UpdateNotification(int id, [FromBody] UpdateNotificationRequest request)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var notification = await db.Notifications.FindAsync(id);
+            if (notification == null) return NotFound(new { success = false, message = "通知不存在" });
+
+            
+            if (!string.IsNullOrEmpty(request.Title))
+                notification.Title = request.Title;
+            if (request.Content != null)
+                notification.Content = request.Content;
+            if (!string.IsNullOrEmpty(request.Type))
+                notification.Type = request.Type;
+            if (!string.IsNullOrEmpty(request.Priority))
+                notification.Priority = request.Priority;
+            
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, message = "通知已更新" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UpdateNotification failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
+    // DELETE /api/tenant/notification/notifications/{id}
+    [HttpDelete("notifications/{id}")]
+    public async Task<IActionResult> DeleteNotification(int id)
+    {
+        try
+        {
+            using var db = CreateDbContext();
+            var notification = await db.Notifications.FindAsync(id);
+            if (notification == null) return NotFound(new { success = false, message = "通知不存在" });
+            
+            db.Notifications.Remove(notification);
+            await db.SaveChangesAsync();
+            return Ok(new { success = true, message = "通知已删除" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DeleteNotification failed");
             return Ok(new { success = false, message = ex.Message });
         }
     }
@@ -356,4 +480,12 @@ public class UpdateMessageTemplateRequest
     public string? Subject { get; set; }
     public string? Content { get; set; }
     public string? Variables { get; set; }
+}
+
+public class UpdateNotificationRequest
+{
+    public string? Title { get; set; }
+    public string? Content { get; set; }
+    public string? Type { get; set; }
+    public string? Priority { get; set; }
 }

@@ -52,3 +52,47 @@ public class ActivityEnrollment : BaseEntity
 
     public DateTime EnrolledAt { get; set; } = DateTime.UtcNow;
 }
+
+public class Notice : BaseEntity
+{
+    [MaxLength(100)]
+    public string Title { get; set; } = string.Empty;
+
+    [MaxLength(2000)]
+    public string? Content { get; set; }
+
+    [MaxLength(20)]
+    public string Type { get; set; } = "general";
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "published";
+
+    public int ProjectId { get; set; } = 1;
+
+    public int? Top { get; set; }
+}
+
+public class Suggestion : BaseEntity
+{
+    public int ProjectId { get; set; } = 1;
+
+    [MaxLength(50)]
+    public string Title { get; set; } = string.Empty;
+
+    [MaxLength(1000)]
+    public string? Content { get; set; }
+
+    [MaxLength(50)]
+    public string? ContactName { get; set; }
+
+    [MaxLength(20)]
+    public string? ContactPhone { get; set; }
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "pending";
+
+    [MaxLength(500)]
+    public string? Reply { get; set; }
+
+    public DateTime? RepliedAt { get; set; }
+}

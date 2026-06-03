@@ -16,7 +16,9 @@ public class AnnouncementDbContext : DbContext
             e.HasIndex(a => a.Status);
             e.HasIndex(a => a.Category);
             e.HasIndex(a => a.ProjectId);
-            e.HasIndex(a => a.PublishTime);
+            e.HasIndex(a => a.ProjectCode);
+            e.HasIndex(a => a.ProjectCode);
+            e.Property(a => a.ProjectCode).HasMaxLength(20);
         });
 
         modelBuilder.Entity<AnnouncementRead>(e => {

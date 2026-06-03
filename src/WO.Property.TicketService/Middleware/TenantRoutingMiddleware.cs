@@ -25,6 +25,9 @@ public class TenantRoutingMiddleware
         // 跳过匿名接口
         if (IsAnonymousEndpoint(path))
         {
+            // 匿名接口也使用默认租户
+            tenantDbFactory.SetCurrentTenantCode("wo_property");
+            _logger.LogDebug("Anonymous endpoint, using default tenant");
             await _next(context);
             return;
         }
@@ -32,26 +35,23 @@ public class TenantRoutingMiddleware
         var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
         if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
         {
+            // 无认证 → 走默认租户（仅限匿名接口/health等）
+            _logger.LogDebug("No auth header, using default tenant");
+            tenantDbFactory.SetCurrentTenantCode("wo_property");
             await _next(context);
             return;
         }
 
-        // 优先使用 X-Project header（前端传递），其次 JWT 中的 project_code
+        // 有认证请求：X-Project header 必须存在
         var tenantCode = context.Request.Headers["X-Project"].FirstOrDefault();
         if (string.IsNullOrEmpty(tenantCode))
         {
-            var token = authHeader.Substring("Bearer ".Length).Trim();
-            tenantCode = ExtractTenantCodeFromJwt(token);
-        }
-
-        if (string.IsNullOrEmpty(tenantCode))
-        {
-            _logger.LogWarning("JWT does not contain tenant_code claim");
-            context.Response.StatusCode = 401;
+            _logger.LogWarning("Authenticated request without X-Project header — rejected");
+            context.Response.StatusCode = 400;
             await context.Response.WriteAsJsonAsync(new
             {
                 success = false,
-                message = "Invalid token: missing tenant information"
+                message = "Missing X-Project header. Authenticated requests must specify the project."
             });
             return;
         }

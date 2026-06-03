@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
 using WO.Property.MasterDataService.DTOs;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -8,6 +9,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 楼栋管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/buildings")]
 public class BuildingsController : ControllerBase
 {

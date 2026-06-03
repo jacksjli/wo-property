@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { deliveryApi } from '@/api/delivery'
+import { getDeliveryList } from '@/api/delivery'
 
 const loading = ref(false)
 const list = ref<any[]>([])
@@ -9,7 +9,7 @@ const list = ref<any[]>([])
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await deliveryApi.getList({ pageSize: 100 })
+    const res: any = await getDeliveryList({ page: 1, pageSize: 100 })
     if (res.success !== false) {
       list.value = res.data || res
     }

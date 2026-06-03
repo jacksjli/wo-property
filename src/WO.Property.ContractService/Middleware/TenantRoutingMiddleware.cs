@@ -21,6 +21,8 @@ public class TenantRoutingMiddleware
 
     public async Task InvokeAsync(HttpContext context, WO.Property.ContractService.Tenant.ITenantDbFactory tenantDbFactory)
     {
+        _logger.LogWarning("[MW START] Path: {Path}", context.Request.Path);
+
         var path = context.Request.Path.Value?.ToLower() ?? "";
 
         // 跳过匿名接口
@@ -31,6 +33,8 @@ public class TenantRoutingMiddleware
         }
 
         var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+        _logger.LogWarning("[DEBUG2] Headers: {H}", context.Request.Headers.Count);
+        _logger.LogWarning("[DEBUG2] Auth header value: {AH}", authHeader ?? "NULL");
         if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
         {
             await _next(context);
@@ -38,6 +42,8 @@ public class TenantRoutingMiddleware
         }
 
         var token = authHeader.Substring("Bearer ".Length).Trim();
+        _logger.LogWarning("[DEBUG3] token length: {TL}", token.Length);
+        _logger.LogWarning("[DEBUG3] token preview: {TP}", token.Substring(0, Math.Min(20, token.Length)));
         
         // 直接解析 JWT payload (bypass claims mapping which strips non-standard claims)
         var tenantCode = ExtractTenantCodeFromJwt(token);

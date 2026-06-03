@@ -37,8 +37,9 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// 配置端口
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5029";
+// 配置端口 - 使用 ports.json 配置化端口
+var configuredPort = PortConfig.GetPortOrDefault("TicketTypeService", 5107);
+var port = Environment.GetEnvironmentVariable("PORT") ?? configuredPort.ToString();
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // 获取数据库连接字符串

@@ -59,6 +59,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+// Named HttpClient for PersonService (login-by-person endpoint)
+builder.Services.AddHttpClient("PersonService", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5018");
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // 配置CORS
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins")
@@ -387,6 +393,164 @@ app.MapPost("/api/auth/logout", [Authorize] async (HttpContext context, MySqlCon
     return Results.Ok(new { Success = true, Message = "已退出登录" });
 });
 
+// ============ 小程序员工身份登录 API（姓名+电话）============
+app.MapPost("/api/auth/login-by-person", async (PersonLoginRequest request, HttpContext context, IHttpClientFactory httpClientFactory) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Phone))
+        return Results.BadRequest(new { success = false, message = "姓名和电话不能为空" });
+
+    try
+    {
+        // 调用 PersonService 查询匹配
+        var client = httpClientFactory.CreateClient("PersonService");
+        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader))
+            client.DefaultRequestHeaders.Authorization = System.Net.Http.Headers.AuthenticationHeaderValue.Parse(authHeader);
+
+        // 修复: 直接查询 wo_property.personnel 表（不经过 TenantDbFactory）
+        var woConnStr = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4;";
+        using var personConn = new MySqlConnection(woConnStr);
+        await personConn.OpenAsync();
+        using var personCmd = new MySqlCommand(
+            "SELECT id, name, phone, role, specialty_ids, area_ids, building_ids, project_codes FROM personnel WHERE name=@name AND phone=@phone LIMIT 1",
+            personConn);
+        personCmd.Parameters.AddWithValue("@name", request.Name);
+        personCmd.Parameters.AddWithValue("@phone", request.Phone);
+        
+        bool hasPerson = false;
+        int? personId = null;
+        string? name = null;
+        string? role = null;
+        string? phone = null;
+        string? specialtyIds = null;
+        string? areaIds = null;
+        string? buildingIds = null;
+        string? projectCodes = null;
+        
+        using (var reader = await personCmd.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync())
+            {
+                hasPerson = true;
+                personId = reader.GetInt32(0);
+                name = reader.GetString(1);
+                phone = reader.IsDBNull(2) ? null : reader.GetString(2);
+                role = reader.IsDBNull(3) ? null : reader.GetString(3);
+                specialtyIds = reader.IsDBNull(4) ? null : reader.GetString(4);
+                areaIds = reader.IsDBNull(5) ? null : reader.GetString(5);
+                buildingIds = reader.IsDBNull(6) ? null : reader.GetString(6);
+                projectCodes = reader.IsDBNull(7) ? null : reader.GetString(7);
+            }
+        }
+        
+        string employeeType = hasPerson ? "Matched" : "Guest";
+
+        // 解析 projectCodes JSON，查询项目名称列表
+        List<object> projects = new();
+        if (!string.IsNullOrEmpty(projectCodes) && projectCodes.StartsWith("["))
+        {
+            try
+            {
+                var codes = JsonSerializer.Deserialize<List<string>>(projectCodes) ?? new();
+                if (codes.Count > 0)
+                {
+                    using var projConn = new MySqlConnection(woConnStr);
+                    await projConn.OpenAsync();
+                    var placeholders = string.Join(",", codes.Select((_, i) => $"@p{i}"));
+                    using var projCmd = new MySqlCommand($"SELECT project_code, project_name FROM projects WHERE project_code IN ({placeholders}) AND status='active'", projConn);
+                    for (int i = 0; i < codes.Count; i++) projCmd.Parameters.AddWithValue($"@p{i}", codes[i]);
+                    using var projReader = await projCmd.ExecuteReaderAsync();
+                    while (await projReader.ReadAsync())
+                    {
+                        projects.Add(new { projectCode = projReader.GetString(0), projectName = projReader.GetString(1) });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Query projects error: {ex.Message}");
+            }
+        }
+
+        // 构建 JWT claims
+        var claims = new List<System.Security.Claims.Claim>
+        {
+            new("employeeType", employeeType),
+            new("tenantCode", request.TenantCode)
+        };
+
+        if (personId.HasValue)
+        {
+            claims.Add(new("personId", personId.Value.ToString()));
+        }
+
+        if (!string.IsNullOrEmpty(name))
+        {
+            claims.Add(new(System.Security.Claims.ClaimTypes.Name, name));
+        }
+
+        if (!string.IsNullOrEmpty(role))
+        {
+            claims.Add(new(System.Security.Claims.ClaimTypes.Role, role));
+        }
+
+        if (!string.IsNullOrEmpty(specialtyIds))
+        {
+            claims.Add(new("specialtyIds", specialtyIds));
+        }
+
+        if (!string.IsNullOrEmpty(areaIds))
+        {
+            claims.Add(new("areaIds", areaIds));
+        }
+
+        if (!string.IsNullOrEmpty(buildingIds))
+        {
+            claims.Add(new("buildingIds", buildingIds));
+        }
+
+        if (!string.IsNullOrEmpty(projectCodes))
+        {
+            claims.Add(new("projectCodes", projectCodes));
+        }
+
+        var jwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? "WO-Property-Management-Unified-Secret-Key-2026-For-All-Services";
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecretKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var tokenObj = new JwtSecurityToken(
+            issuer: "wo-property-unified-auth",
+            audience: "wo-property-services",
+            claims: claims,
+            expires: DateTime.UtcNow.AddDays(7),
+            signingCredentials: credentials
+        );
+        var token = new JwtSecurityTokenHandler().WriteToken(tokenObj);
+
+        return Results.Ok(new
+        {
+            success = true,
+            data = new
+            {
+                token,
+                personId = personId,
+                employeeType,
+                name = name ?? request.Name,
+                phone = phone ?? request.Phone,
+                role = role ?? "",
+                specialtyIds = specialtyIds ?? "",
+                areaIds = areaIds ?? "",
+                buildingIds = buildingIds ?? "",
+                projects
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Person login error: {ex.Message}");
+        return Results.Ok(new { success = false, message = "登录失败: " + ex.Message });
+    }
+});
+
 app.Run();
 
 // ============================================================
@@ -517,4 +681,10 @@ public class LoginRequest
     /// </summary>
     [Required]
     public string TenantCode { get; set; } = string.Empty;
+}
+public class PersonLoginRequest
+{
+    public string Name { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string TenantCode { get; set; } = "wo_property";
 }

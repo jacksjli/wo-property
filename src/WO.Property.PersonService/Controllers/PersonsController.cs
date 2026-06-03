@@ -14,6 +14,38 @@ public class PersonsController : ControllerBase
         _connectionString = "Server=localhost;Port=3306;Database=wo_property;User=woproperty;Password=WOProperty2026!;CharSet=utf8mb4;Pooling=true;Minimum Pool Size=2;Maximum Pool Size=20;Connection Timeout=10;";
     }
 
+    // 工具方法：将列名转为 camelCase（如 CreatedAt, EmployeeNo → createdAt, employeeNo）
+    private static string ToCamelCase(string str)
+    {
+        if (string.IsNullOrEmpty(str)) return str;
+        // 处理 snake_case
+        if (str.Contains('_'))
+        {
+            var parts = str.Split('_');
+            var result = parts[0].ToLower();
+            for (int i = 1; i < parts.Length; i++)
+            {
+                if (parts[i].Length > 0)
+                    result += char.ToUpperInvariant(parts[i][0]) + parts[i][1..].ToLower();
+            }
+            return result;
+        }
+        // 处理 PascalCase
+        return char.ToLowerInvariant(str[0]) + str[1..];
+    }
+
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetPersons(
         [FromQuery] int page = 1,
@@ -27,6 +59,14 @@ public class PersonsController : ControllerBase
     {
         var whereClauses = new List<string>();
         var parameters = new List<MySqlParameter>();
+
+        // 按 project_code 过滤（单租户多项目）
+        var projectCode = GetProjectCode();
+        if (!string.IsNullOrEmpty(projectCode))
+        {
+            whereClauses.Add("project_code = @projectCode");
+            parameters.Add(new MySqlParameter("@projectCode", projectCode));
+        }
 
         if (!string.IsNullOrEmpty(name))
         {
@@ -59,7 +99,8 @@ public class PersonsController : ControllerBase
             parameters.Add(new MySqlParameter("@personType", personType));
         }
 
-        var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
+        whereClauses.Add("Status != '已删除'");
+        var whereSql = "WHERE " + string.Join(" AND ", whereClauses);
 
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
@@ -85,7 +126,12 @@ public class PersonsController : ControllerBase
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var val = reader.GetValue(i);
-                row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                if (val != DBNull.Value)
+                {
+                    var colName = reader.GetName(i);
+                    var camelName = ToCamelCase(colName);
+                    row[camelName] = val;
+                }
             }
             items.Add(row);
         }
@@ -120,7 +166,12 @@ public class PersonsController : ControllerBase
         for (int i = 0; i < reader.FieldCount; i++)
         {
             var val = reader.GetValue(i);
-            row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+            if (val != DBNull.Value)
+            {
+                var colName = reader.GetName(i);
+                var camelName = ToCamelCase(colName);
+                row[camelName] = val;
+            }
         }
 
         return Ok(new { success = true, data = row });
@@ -132,9 +183,29 @@ public class PersonsController : ControllerBase
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
 
+        // 辅助方法：从 object 中提取值（处理 JsonElement）
+        static object? GetValue(object? v)
+        {
+            if (v == null) return null;
+            if (v is System.Text.Json.JsonElement je)
+            {
+                return je.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.String => je.GetString(),
+                    System.Text.Json.JsonValueKind.Number => je.TryGetInt32(out var i) ? i : je.GetDouble(),
+                    System.Text.Json.JsonValueKind.True => true,
+                    System.Text.Json.JsonValueKind.False => false,
+                    System.Text.Json.JsonValueKind.Null => null,
+                    _ => je.ToString()
+                };
+            }
+            return v;
+        }
+
         // Check duplicate phone
-        var phoneValue = dto.TryGetValue("phone", out var pv) ? pv?.ToString() ?? "" : "";
-        if (!dto.ContainsKey("employeeNo") || string.IsNullOrEmpty(dto.GetValueOrDefault("employeeNo")?.ToString()))
+        var phoneVal = GetValue(dto.TryGetValue("phone", out var pv) ? pv : null);
+        var phoneValue = phoneVal?.ToString() ?? "";
+        if (!dto.ContainsKey("employeeNo") || string.IsNullOrEmpty(GetValue(dto.GetValueOrDefault("employeeNo"))?.ToString()))
             dto["employeeNo"] = "EMP" + DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString().Substring(5);
         if (!dto.ContainsKey("status"))
             dto["status"] = "active";
@@ -143,16 +214,29 @@ public class PersonsController : ControllerBase
         if (Convert.ToInt32(await checkPhone.ExecuteScalarAsync()) > 0)
             return BadRequest(new { success = false, message = "Phone already exists" });
 
+        // 前端字段名 -> 数据库列名 映射
+        var fieldMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "TicketTypeIds", "ticket_type_ids" },
+            { "SpecialtyIds", "specialty_ids" },
+            { "AreaIds", "area_ids" },
+            { "BuildingIds", "building_ids" },
+            { "IsSupervisor", "is_supervisor" },
+            { "MaxConcurrentTickets", "max_concurrent_tickets" }
+        };
+
         var columns = new List<string>();
         var values = new List<string>();
         var parameters = new List<MySqlParameter>();
 
         foreach (var kvp in dto)
         {
-            if (kvp.Value == null) continue;
-            columns.Add(kvp.Key);
-            values.Add($"@{kvp.Key}");
-            parameters.Add(new MySqlParameter($"@{kvp.Key}", kvp.Value.ToString()));
+            var rawValue = GetValue(kvp.Value);
+            if (rawValue == null) continue;
+            var columnName = fieldMapping.TryGetValue(kvp.Key, out var mapped) ? mapped : kvp.Key;
+            columns.Add(columnName);
+            values.Add($"@{columnName}");
+            parameters.Add(new MySqlParameter($"@{columnName}", rawValue));
         }
 
         var sql = $"INSERT INTO Personnel ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)}); SELECT LAST_INSERT_ID();";
@@ -169,19 +253,57 @@ public class PersonsController : ControllerBase
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
 
+        // 辅助方法：从 object 中提取值（处理 JsonElement）
+        static object? GetValue(object? v)
+        {
+            if (v == null) return null;
+            if (v is System.Text.Json.JsonElement je)
+            {
+                return je.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.String => je.GetString(),
+                    System.Text.Json.JsonValueKind.Number => je.TryGetInt32(out var i) ? i : je.GetDouble(),
+                    System.Text.Json.JsonValueKind.True => true,
+                    System.Text.Json.JsonValueKind.False => false,
+                    System.Text.Json.JsonValueKind.Null => null,
+                    _ => je.ToString()
+                };
+            }
+            return v;
+        }
+
         // Check phone duplicate if being updated
         if (dto.ContainsKey("phone"))
         {
             await using var checkPhone = new MySqlCommand(
                 "SELECT COUNT(*) FROM Personnel WHERE Phone = @phone AND Id != @id", conn);
-            checkPhone.Parameters.AddWithValue("@phone", dto["phone"].ToString() ?? "");
+            checkPhone.Parameters.AddWithValue("@phone", GetValue(dto["phone"])?.ToString() ?? "");
             checkPhone.Parameters.AddWithValue("@id", id);
             if (Convert.ToInt32(await checkPhone.ExecuteScalarAsync()) > 0)
                 return BadRequest(new { success = false, message = "Phone already exists" });
         }
 
-        var sets = dto.Keys.Select(k => $"{k} = @{k}").ToList();
-        var parameters = dto.Select(kvp => new MySqlParameter($"@{kvp.Key}", kvp.Value?.ToString() ?? (object)DBNull.Value)).ToList();
+        // 前端字段名 -> 数据库列名 映射
+        var fieldMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "TicketTypeIds", "ticket_type_ids" },
+            { "SpecialtyIds", "specialty_ids" },
+            { "AreaIds", "area_ids" },
+            { "BuildingIds", "building_ids" },
+            { "IsSupervisor", "is_supervisor" },
+            { "MaxConcurrentTickets", "max_concurrent_tickets" }
+        };
+
+        var sets = new List<string>();
+        var parameters = new List<MySqlParameter>();
+        foreach (var kvp in dto)
+        {
+            var rawValue = GetValue(kvp.Value);
+            if (rawValue == null) continue;
+            var columnName = fieldMapping.TryGetValue(kvp.Key, out var mapped) ? mapped : kvp.Key;
+            sets.Add($"{columnName} = @{columnName}");
+            parameters.Add(new MySqlParameter($"@{columnName}", rawValue));
+        }
 
         var sql = $"UPDATE Personnel SET {string.Join(", ", sets)} WHERE Id = @id";
         await using var cmd = new MySqlCommand(sql, conn);
@@ -199,7 +321,7 @@ public class PersonsController : ControllerBase
         await conn.OpenAsync();
 
         await using var cmd = new MySqlCommand(
-            "UPDATE Persons SET Status = '已删除' WHERE Id = @id", conn);
+            "UPDATE Personnel SET Status = '已删除' WHERE Id = @id", conn);
         cmd.Parameters.AddWithValue("@id", id);
         await cmd.ExecuteNonQueryAsync();
 
@@ -223,7 +345,12 @@ public class PersonsController : ControllerBase
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var val = reader.GetValue(i);
-                row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                if (val != DBNull.Value)
+                {
+                    var colName = reader.GetName(i);
+                    var camelName = ToCamelCase(colName);
+                    row[camelName] = val;
+                }
             }
             items.Add(row);
         }
@@ -247,7 +374,12 @@ public class PersonsController : ControllerBase
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var val = reader.GetValue(i);
-                row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                if (val != DBNull.Value)
+                {
+                    var colName = reader.GetName(i);
+                    var camelName = ToCamelCase(colName);
+                    row[camelName] = val;
+                }
             }
             items.Add(row);
         }
@@ -269,7 +401,12 @@ public class PersonsController : ControllerBase
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var val = reader.GetValue(i);
-                row[reader.GetName(i)] = val == DBNull.Value ? null : val;
+                if (val != DBNull.Value)
+                {
+                    var colName = reader.GetName(i);
+                    var camelName = ToCamelCase(colName);
+                    row[camelName] = val;
+                }
             }
             items.Add(row);
         }

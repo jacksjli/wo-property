@@ -5,6 +5,8 @@ import { Plus, Edit, Delete, Refresh, Setting, Search, Check, Warning, Clock, Do
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
+import { currentProject } from '@/stores/project'
+import { getInspections, createInspection, updateInspection, deleteInspection, getInspectionRecords } from '@/api/inspection'
 import { masterApi } from '@/api/http'
 
 // 权限验证
@@ -82,23 +84,25 @@ const handleSearch = () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/inspection-records', {
-      params: {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize,
-        keyword: searchKeyword.value || undefined
-      }
+    const res: any = await getInspections({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      keyword: searchKeyword.value || undefined,
     })
-    if (res.success) {
-      tableData.value = res.data || []
-      pagination.value = res.pagination || pagination.value
+    if (res.success !== false) {
+      const list = Array.isArray(res) ? res : (res.data || [])
+      const total = res.totalCount || res.pagination?.totalCount || list.length
+      const pageSize = res.pageSize || res.pagination?.pageSize || pagination.value.pageSize
+      tableData.value = list
+      pagination.value.totalCount = total
+      pagination.value.totalPages = Math.ceil(total / pageSize)
       // 更新统计
       stats.value = {
-        total: res.pagination?.totalCount || 0,
-        pending: tableData.value.filter(r => r.status === 'pending').length,
-        inProgress: tableData.value.filter(r => r.status === 'in_progress').length,
-        completed: tableData.value.filter(r => r.status === 'completed').length,
-        issues: tableData.value.filter(r => r.result === 'fail').length
+        total: total,
+        pending: list.filter((r: any) => r.status === 'pending').length,
+        inProgress: list.filter((r: any) => r.status === 'in_progress').length,
+        completed: list.filter((r: any) => r.status === 'completed').length,
+        issues: list.filter((r: any) => r.result === 'fail').length
       }
     }
   } catch (e: any) {
@@ -173,20 +177,20 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     const payload = {
-      InspectionTitle: form.value.inspectionTitle,
-      BuildingId: form.value.buildingId,
-      InspectionArea: form.value.inspectionArea,
-      InspectorName: form.value.inspectorName,
-      InspectionDate: form.value.inspectionDate || null,
-      InspectionTime: form.value.inspectionTime || null,
-      NextInspectionDate: form.value.nextInspectionDate || null,
-      Remarks: form.value.remarks || null,
+      title: form.value.inspectionTitle,
+      buildingId: form.value.buildingId,
+      area: form.value.inspectionArea,
+      inspectorName: form.value.inspectorName,
+      planDate: form.value.inspectionDate || undefined,
+      planTime: form.value.inspectionTime || undefined,
+      nextDate: form.value.nextInspectionDate || undefined,
+      remarks: form.value.remarks || undefined,
     }
     if (editingId.value) {
-      await masterApi.put(`/inspection-records/${editingId.value}`, payload)
+      await updateInspection(editingId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/inspection-records', payload)
+      await createInspection(payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -206,7 +210,7 @@ const handleDelete = async (row: any) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await masterApi.delete(`/inspection-records/${row.id}`)
+    await deleteInspection(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (e: any) {

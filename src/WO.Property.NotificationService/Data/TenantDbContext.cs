@@ -35,6 +35,7 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.RelatedEntityType).HasColumnName("RelatedEntityType");
             entity.Property(e => e.RelatedEntityId).HasColumnName("RelatedEntityId");
             entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
         });
 
         modelBuilder.Entity<MessageTemplate>(entity =>

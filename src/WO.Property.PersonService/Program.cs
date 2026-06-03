@@ -95,9 +95,7 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins")
-            .Get<string[]>() ?? new[] { "http://localhost:5173" };
-        policy.WithOrigins(allowedOrigins)
+        policy.SetIsOriginAllowed(_ => true)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -172,5 +170,8 @@ app.UseMiddleware<WO.Property.PersonService.Middleware.TenantRoutingMiddleware>(
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Health check endpoint
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "PersonService", timestamp = DateTime.UtcNow }));
 
 app.Run();

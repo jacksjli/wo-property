@@ -241,9 +241,6 @@
                 <el-icon><User /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-label">创建人</div>
-                <div class="stat-value">用户 {{ ticketStore.currentTicket?.createdBy }}</div>
-              </div>
             </div>
             
             <div class="stat-item">
@@ -392,10 +389,6 @@
             </div>
             
             <div class="summary-item">
-              <span class="summary-label">创建人</span>
-              <span class="summary-value">
-                {{ ticketStore.currentTicket?.creatorName || `用户${ticketStore.currentTicket?.createdBy}` }}
-              </span>
             </div>
             
             <div class="summary-item">
@@ -471,6 +464,56 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 升级状态卡片 -->
+    <el-card v-if="escalationData" class="escalation-card" shadow="never">
+      <template #header>
+        <h3>
+          <el-icon><WarningFilled /></el-icon>
+          升级状态
+          <el-tag v-if="escalationData.currentLevel > 0" type="danger" size="small" style="margin-left: 8px;">
+            L{{ escalationData.currentLevel }}
+          </el-tag>
+        </h3>
+      </template>
+      
+      <div class="escalation-summary">
+        <div class="escalation-item">
+          <span class="label">当前状态:</span>
+          <span class="value">{{ escalationData.currentStatus }}</span>
+        </div>
+        <div class="escalation-item" v-if="escalationData.nextEscalationRole">
+          <span class="label">下一升级:</span>
+          <span class="value escalation-role">{{ escalationData.nextEscalationRole }}</span>
+        </div>
+      </div>
+
+      <el-divider content-position="left">升级历史</el-divider>
+
+      <el-timeline v-if="escalationData.escalations?.length > 0">
+        <el-timeline-item
+          v-for="esc in escalationData.escalations"
+          :key="esc.id"
+          :type="esc.level >= 3 ? 'danger' : esc.level >= 2 ? 'warning' : 'primary'"
+          :timestamp="formatDateTime(esc.escalatedAt)"
+        >
+          <div class="escalation-timeline-item">
+            <div class="esc-level">级别 L{{ esc.level }}</div>
+            <div class="esc-detail">
+              <span class="esc-from">{{ esc.fromPersonName }}</span>
+              <span class="esc-arrow">→</span>
+              <span class="esc-to">{{ esc.toPersonName }} ({{ esc.toRole }})</span>
+            </div>
+            <div class="esc-status">
+              <el-tag :type="esc.status === 'Pending' ? 'warning' : 'success'" size="small">
+                {{ esc.status }}
+              </el-tag>
+            </div>
+          </div>
+        </el-timeline-item>
+      </el-timeline>
+      <el-empty v-else description="暂无升级记录" :image-size="60" />
+    </el-card>
 
     <!-- 拒单对话框 -->
     <el-dialog
@@ -559,19 +602,23 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus';
 import { 
-  ArrowLeft, Edit, Delete, Plus, User, Check, 
+  ArrowLeft, Edit, Delete, Plus, User, Check, WarningFilled
 } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
 import { useTicketStore } from '@/stores/ticket';
 import { personnelStore } from '@/stores/personnel';
 import { ticketTypeStore } from '@/stores/ticketType';
 import type { UpdateTicketRequest } from '@/api/ticket';
+import dispatchApi from '@/api/dispatch';
 import { linkedService } from '@/api/linkedService';
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const ticketStore = useTicketStore();
+
+// 升级数据
+const escalationData = ref<any>(null);
 
 // 工单ID
 const ticketId = computed(() => parseInt(route.params.id as string));
@@ -979,9 +1026,24 @@ const loadTicketData = async () => {
       status: ticket.status,
       assignedTo: ticket.assignedTo
     };
+    // 加载升级数据
+    loadEscalationData();
   } else {
     ElMessage.error('工单不存在或加载失败');
     router.push('/tickets');
+  }
+};
+
+
+// 加载升级数据
+const loadEscalationData = async () => {
+  try {
+    const res = await dispatchApi.getEscalations(ticketId.value);
+    if (res.data?.success) {
+      escalationData.value = res.data.data;
+    }
+  } catch (e) {
+    console.warn('加载升级数据失败:', e);
   }
 };
 
@@ -1112,11 +1174,74 @@ onMounted(() => {
 .activity-card h3,
 .stats-card h3,
 .quick-actions-card h3,
-.info-summary-card h3 {
+.info-summary-card h3,
+.escalation-card h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.escalation-card {
+  border-radius: 12px;
+  border: 1px solid #fee2e2;
+  background: #fef2f2;
+}
+
+.escalation-summary {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.escalation-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.escalation-item .label {
+  color: #666;
+  font-size: 14px;
+}
+
+.escalation-item .value {
+  font-weight: 600;
+  color: #333;
+}
+
+
+.escalation-role {
+  color: #E6A23C;
+}
+
+
+.escalation-timeline-item {
+  line-height: 1.6;
+}
+
+.esc-level {
+  font-weight: bold;
+  color: #333;
+}
+
+
+.esc-detail {
+  color: #666;
+  font-size: 13px;
+}
+
+.esc-arrow {
+  margin: 0 6px;
+  color: #999;
+}
+
+
+.esc-status {
+  margin-top: 4px;
 }
 
 /* 表单操作 */

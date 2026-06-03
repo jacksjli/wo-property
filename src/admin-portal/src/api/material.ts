@@ -121,7 +121,7 @@ export interface MaterialStatistics {
   totalStockValue: number;
 }
 
-// API函数
+// API函数（使用 http.ts 导出的 materialApi 作为客户端）
 export const materialApi = {
   // 物料分类
   getCategories: (): Promise<ApiResponse<{ categories: MaterialCategory[] }>> => {

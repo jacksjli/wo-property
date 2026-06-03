@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { currentProject } from './project';
 import {
   getTickets,
   getTicket,
@@ -156,7 +157,7 @@ export const useTicketStore = defineStore('ticket', () => {
     error.value = null;
 
     try {
-      const response = await createTicket(data);
+      const response = await createTicket({ ...data, projectId: currentProject.value?.id || 0 });
 
       if (response.success && response.data) {
         tickets.value.unshift(response.data);

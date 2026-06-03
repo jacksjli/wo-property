@@ -38,7 +38,7 @@ public class TenantDbFactory : ITenantDbFactory
 
         // wo_property 项目直接使用 wo_property 数据库（历史遗留）
         // 其他项目使用 project_{project_code} 命名规范
-        var databaseName = tenantCode == "wo_property" ? "wo_property" : $"project_{tenantCode}";
+        var databaseName = tenantCode == "wo_property" ? "wo_property" : $"wo_property";
 
         var result = Regex.Replace(
             baseConnStr,

@@ -17,6 +17,9 @@ public class Bill : BaseEntity
     [MaxLength(100)] public string? TransactionId { get; set; }
     [MaxLength(200)] public string? Remark { get; set; }
     public int ProjectId { get; set; } = 1;
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class MeterReading : BaseEntity
@@ -31,4 +34,9 @@ public class MeterReading : BaseEntity
     public DateTime? ReadingDate { get; set; }
     [MaxLength(100)] public string? ReaderName { get; set; }
     public int ProjectId { get; set; } = 1;
+
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+
 }

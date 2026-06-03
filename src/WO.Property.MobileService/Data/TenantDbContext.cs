@@ -32,6 +32,7 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.UserId).HasDatabaseName("idx_user_id");
             entity.Property(e => e.DeviceType).HasConversion<string>().HasColumnType("varchar(50)");
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
         });
@@ -46,6 +47,7 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.CreatedAt).HasDatabaseName("idx_created_at");
             entity.Property(e => e.Type).HasConversion<string>().HasColumnType("varchar(50)");
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
         });
@@ -59,6 +61,7 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.UserId).HasDatabaseName("idx_session_user_id");
             entity.HasIndex(e => e.ExpiresAt).HasDatabaseName("idx_expires_at");
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
         });
@@ -71,6 +74,7 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.OpenId).IsUnique().HasDatabaseName("idx_open_id");
             entity.HasIndex(e => e.UnionId).HasDatabaseName("idx_union_id");
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
         });
@@ -84,6 +88,7 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.Category).HasDatabaseName("idx_category");
             entity.HasIndex(e => e.SortOrder).HasDatabaseName("idx_sort_order");
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
         });

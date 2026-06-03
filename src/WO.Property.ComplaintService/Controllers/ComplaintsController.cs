@@ -1,17 +1,63 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using System.Text;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.ComplaintService.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Authorize]
+[Route("api/tenant/complaints")]
 public class ComplaintsController : ControllerBase
 {
     private readonly MySqlConnection _db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<ComplaintsController> _logger;
 
-    public ComplaintsController(MySqlConnection db)
+    public ComplaintsController(
+        MySqlConnection db,
+        IHttpClientFactory httpClientFactory,
+        ILogger<ComplaintsController> logger)
     {
         _db = db;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+    }
+
+    private async Task PublishComplaintEventAsync(string eventType, object data)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Gateway");
+            var payload = new
+            {
+                module = "complaint",
+                eventType = eventType,
+                data = data
+            };
+            var content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(payload),
+                Encoding.UTF8,
+                "application/json"
+            );
+            await client.PostAsync("/internal/events/publish", content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to publish complaint event: {EventType}", eventType);
+        }
+    }
+
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
     }
 
     // ============================================
@@ -30,6 +76,14 @@ public class ComplaintsController : ControllerBase
         
         var whereClauses = new List<string>();
         var parameters = new List<MySqlParameter>();
+
+        // 按 project_code 过滤（单租户多项目）
+        var projectCode = GetProjectCode();
+        if (!string.IsNullOrEmpty(projectCode))
+        {
+            whereClauses.Add("project_code = @projectCode");
+            parameters.Add(new MySqlParameter("@projectCode", projectCode));
+        }
 
         if (!string.IsNullOrEmpty(keyword))
         {
@@ -161,7 +215,19 @@ public class ComplaintsController : ControllerBase
             UpdatedAt = now
         };
 
-        return Ok(new { success = true, data = result, message = "投诉创建成功" });
+        // 发布投诉创建事件
+            await PublishComplaintEventAsync("created", new
+            {
+                id = id,
+                complaintNo = complaintNo,
+                title = dto.Title,
+                type = dto.Type ?? "service",
+                priority = dto.Priority ?? "normal",
+                handleStatus = "pending",
+                complainantName = dto.ComplainantName
+            });
+
+            return Ok(new { success = true, data = result, message = "投诉创建成功" });
     }
 
     // ============================================
@@ -202,6 +268,21 @@ public class ComplaintsController : ControllerBase
         using var updateCmd = new MySqlCommand(sql, _db);
         updateCmd.Parameters.AddRange(parameters.ToArray());
         await updateCmd.ExecuteNonQueryAsync();
+
+        // 发布投诉更新事件
+        if (dto.HandleStatus != null)
+        {
+            await PublishComplaintEventAsync("status_changed", new
+            {
+                id = id,
+                handleStatus = dto.HandleStatus,
+                handlerName = dto.HandlerName
+            });
+        }
+        else
+        {
+            await PublishComplaintEventAsync("updated", new { id = id });
+        }
 
         // 获取更新后的数据
         using var selectCmd = new MySqlCommand(
@@ -275,6 +356,123 @@ public class ComplaintsController : ControllerBase
             });
         }
         return Ok(new { success = true, data = new { total = 0, pending = 0, processing = 0, resolved = 0, closed = 0, todayNew = 0, todayResolved = 0 } });
+    }
+
+    // ============================================
+    // POST /api/tenant/complaints/{id}/accept - 受理投诉
+    // ============================================
+    [HttpPost("{id}/accept")]
+    public async Task<IActionResult> AcceptComplaint(long id, [FromBody] AcceptComplaintDto dto)
+    {
+        await _db.OpenAsync();
+
+        using var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM complaints WHERE Id = @id", _db);
+        checkCmd.Parameters.AddWithValue("@id", id);
+        var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+        if (count == 0) return NotFound(new { success = false, message = "投诉不存在" });
+
+        using var cmd = new MySqlCommand(@"
+            UPDATE complaints SET
+                HandleStatus = 'accepted',
+                HandlerName = @handlerName,
+                UpdatedAt = @now
+            WHERE Id = @id", _db);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@handlerName", dto.HandlerName ?? "");
+        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await cmd.ExecuteNonQueryAsync();
+
+        await PublishComplaintEventAsync("accepted", new { id, handlerName = dto.HandlerName });
+        return Ok(new { success = true, message = "投诉已受理" });
+    }
+
+    // ============================================
+    // POST /api/tenant/complaints/{id}/resolve - 解决投诉
+    // ============================================
+    [HttpPost("{id}/resolve")]
+    public async Task<IActionResult> ResolveComplaint(long id, [FromBody] ResolveComplaintDto dto)
+    {
+        await _db.OpenAsync();
+
+
+        using var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM complaints WHERE Id = @id", _db);
+        checkCmd.Parameters.AddWithValue("@id", id);
+        var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+        if (count == 0) return NotFound(new { success = false, message = "投诉不存在" });
+
+        using var cmd = new MySqlCommand(@"
+            UPDATE complaints SET
+                HandleStatus = 'resolved',
+                Result = @result,
+                HandleProgress = @handleProgress,
+                UpdatedAt = @now
+            WHERE Id = @id", _db);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@result", dto.Result ?? "");
+        cmd.Parameters.AddWithValue("@handleProgress", dto.HandleProgress ?? "");
+        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await cmd.ExecuteNonQueryAsync();
+
+
+        await PublishComplaintEventAsync("resolved", new { id, result = dto.Result });
+        return Ok(new { success = true, message = "投诉已解决" });
+    }
+
+    // ============================================
+    // POST /api/tenant/complaints/{id}/close - 关闭投诉
+    // ============================================
+    [HttpPost("{id}/close")]
+    public async Task<IActionResult> CloseComplaint(long id, [FromBody] CloseComplaintDto dto)
+    {
+        await _db.OpenAsync();
+
+        using var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM complaints WHERE Id = @id", _db);
+        checkCmd.Parameters.AddWithValue("@id", id);
+        var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+        if (count == 0) return NotFound(new { success = false, message = "投诉不存在" });
+
+        using var cmd = new MySqlCommand(@"
+            UPDATE complaints SET
+                HandleStatus = 'closed',
+                Remark = @remark,
+                UpdatedAt = @now
+            WHERE Id = @id", _db);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@remark", dto.Remark ?? "");
+        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await cmd.ExecuteNonQueryAsync();
+
+        await PublishComplaintEventAsync("closed", new { id, remark = dto.Remark });
+
+        return Ok(new { success = true, message = "投诉已关闭" });
+    }
+
+    // ============================================
+    // POST /api/tenant/complaints/{id}/rate - 业主评价
+    // ============================================
+    [HttpPost("{id}/rate")]
+    public async Task<IActionResult> RateComplaint(long id, [FromBody] RateComplaintDto dto)
+    {
+        await _db.OpenAsync();
+
+        using var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM complaints WHERE Id = @id", _db);
+        checkCmd.Parameters.AddWithValue("@id", id);
+        var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+        if (count == 0) return NotFound(new { success = false, message = "投诉不存在" });
+
+        using var cmd = new MySqlCommand(@"
+            UPDATE complaints SET
+                Rating = @rating,
+                Feedback = @feedback,
+                UpdatedAt = @now
+            WHERE Id = @id", _db);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@rating", dto.Rating);
+        cmd.Parameters.AddWithValue("@feedback", dto.Feedback ?? "");
+        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
+        await cmd.ExecuteNonQueryAsync();
+
+        return Ok(new { success = true, message = "评价已提交" });
     }
 
     private static ComplaintDto ReadComplaint(MySqlDataReader reader)
@@ -354,4 +552,26 @@ public class UpdateComplaintDto
     public string? Feedback { get; set; }
     public string? HandleProgress { get; set; }
     public int? Rating { get; set; }
+}
+
+public class AcceptComplaintDto
+{
+    public string? HandlerName { get; set; }
+}
+
+public class ResolveComplaintDto
+{
+    public string? Result { get; set; }
+    public string? HandleProgress { get; set; }
+}
+
+public class CloseComplaintDto
+{
+    public string? Remark { get; set; }
+}
+
+public class RateComplaintDto
+{
+    public int Rating { get; set; }
+    public string? Feedback { get; set; }
 }

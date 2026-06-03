@@ -4,14 +4,6 @@ using WO.Property.Shared.Models;
 
 namespace WO.Property.ContractService.Models;
 
-public enum PaymentStatus
-{
-    Pending,
-    Paid,
-    Overdue,
-    Cancelled
-}
-
 public class Payment : BaseEntity
 {
     [Required]
@@ -29,16 +21,17 @@ public class Payment : BaseEntity
     public string Description { get; set; } = string.Empty;
     
     [Column(TypeName = "decimal(18,2)")]
-    public decimal Amount { get; set; }
+    public decimal? Amount { get; set; }
     
     [MaxLength(20)]
     public string Currency { get; set; } = "CNY";
     
-    public DateTime DueDate { get; set; }
+    public DateTime? DueDate { get; set; }
     
     public DateTime? PaidDate { get; set; }
     
-    public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+    [MaxLength(20)]
+    public string Status { get; set; } = "Pending";
     
     [MaxLength(500)]
     public string? Remarks { get; set; }

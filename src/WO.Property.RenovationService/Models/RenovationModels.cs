@@ -18,4 +18,9 @@ public class RenovationApplication : BaseEntity
     public decimal DepositAmount { get; set; } = 5000m;
     [MaxLength(200)] public string? Remark { get; set; }
     public int ProjectId { get; set; } = 1;
+
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+
 }

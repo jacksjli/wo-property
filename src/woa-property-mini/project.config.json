@@ -1,0 +1,53 @@
+{
+  "description": "物业派工小程序",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "bundle": false,
+    "userConfirmedBundleSwitch": false,
+    "urlCheck": true,
+    "scopeDataCheck": false,
+    "coverView": true,
+    "es6": true,
+    "postcss": true,
+    "compileHotReLoad": false,
+    "lazyloadPlaceholder": true,
+    "preloadBackgroundData": false,
+    "minified": true,
+    "autoAudits": false,
+    "showUnused": false,
+    "uglifyFileName": false,
+    "enhance": true,
+    "useCompilerPlugins": false,
+    "showShadow": false,
+    "minifyWXML": true,
+    "compileWorklet": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.16.1",
+  "appid": "wx122aeb8c033c6a67",
+  "projectname": "woa-property-mini",
+  "sourceRoot": "src",
+  "condition": {},
+  "editorSetting": {
+    "tabSize": 2,
+    "formatOnSave": true
+  },
+  "simulatorPluginLibVersion": {}
+}

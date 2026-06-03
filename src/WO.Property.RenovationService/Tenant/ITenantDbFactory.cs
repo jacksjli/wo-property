@@ -6,6 +6,7 @@ namespace WO.Property.RenovationService.Tenant;
 public interface ITenantDbFactory
 {
     string? GetCurrentTenantCode();
-    void SetCurrentTenantCode(string tenantCode);
+    void SetCurrentTenantCode(string? tenantCode);
     void Clear();
+    string GetTenantConnectionString(string projectCode);
 }

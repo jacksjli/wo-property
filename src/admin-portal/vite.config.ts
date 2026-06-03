@@ -53,11 +53,24 @@ export default defineConfig({
   // 生产环境 CDN 地址（部署时替换）
   base: '/',
   server: {
+    host: '0.0.0.0',
     proxy: {
+      '/api/metrics': {
+        target: 'http://localhost:5250',
+        changeOrigin: true,
+      },
+      '/api/tenant/persons': {
+        target: 'http://localhost:5018',
+        changeOrigin: true,
+      },
       '/project/api': {
         target: 'http://localhost:5000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/project\/api/, '/api'),
+      },
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
       },
     },
   },

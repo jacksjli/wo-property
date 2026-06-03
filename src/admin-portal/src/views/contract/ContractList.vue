@@ -5,7 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting, Document, Warning, Money, Clock }
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { contractService } from '@/api/contract'
 
 type ContractType = 'rental' | 'service' | 'procurement' | 'construction' | 'maintenance' | 'other'
 type ContractStatus = 'draft' | 'active' | 'expired' | 'terminated' | 'renewed'
@@ -109,8 +109,12 @@ const loadData = async () => {
   try {
     const params: any = { page: 1, pageSize: 100 }
     if (filterStatus.value) params.status = filterStatus.value
-    const res: any = await masterApi.get('/contracts', { params })
-    if (res.success) contractList.value = res.data || []
+    const res: any = await contractService.getContracts(params)
+    if (res.success) {
+      contractList.value = res.data?.list || res.data || []
+    } else if (res.data) {
+      contractList.value = res.data.list || res.data || []
+    }
   } catch (e: any) { ElMessage.error(e.message || '加载失败') }
   finally { loading.value = false }
 }
@@ -153,24 +157,22 @@ const handleSubmit = async () => {
 
   try {
     const payload = {
-      ContractNumber: form.value.contractNo,
-      ContractName: form.value.name,
-      ContractType: form.value.type,
-      PartyA: form.value.partyA,
-      PartyB: form.value.partyB,
-      SignedDate: form.value.signDate || null,
-      StartDate: form.value.startDate || null,
-      EndDate: form.value.endDate || null,
-      Amount: form.value.amount,
-      Status: 'draft',
-      AttachmentUrl: null,
-      Remarks: form.value.remark || null,
+      contractNumber: form.value.contractNo,
+      contractName: form.value.name,
+      contractType: form.value.type,
+      partyA: form.value.partyA,
+      partyB: form.value.partyB,
+      signedDate: form.value.signDate || null,
+      startDate: form.value.startDate || null,
+      endDate: form.value.endDate || null,
+      amount: form.value.amount,
+      remarks: form.value.remark || null,
     }
     if (editingId.value) {
-      await masterApi.put(`/contracts/${editingId.value}`, payload)
+      await contractService.updateContract(editingId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/contracts', payload)
+      await contractService.createContract(payload)
       ElMessage.success('添加成功')
     }
     dialogVisible.value = false
@@ -182,7 +184,7 @@ const handleDelete = async (row: Contract) => {
   try {
     await ElMessageBox.confirm(`确定删除合同 "${row.name}" 吗？`, '删除确认',
       { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' })
-    await masterApi.delete(`/contracts/${row.id}`)
+    await contractService.deleteContract(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (e: any) { if (e !== 'cancel') ElMessage.error(e.message || '删除失败') }
@@ -195,7 +197,7 @@ const openTerminateDialog = (row: Contract) => { viewingContract.value = row; te
 const handleTerminate = async () => {
   if (!terminateReason.value.trim()) { ElMessage.warning('请输入终止原因'); return }
   try {
-    await masterApi.put(`/contracts/${viewingContract.value!.id}`, { status: 'terminated', remarks: terminateReason.value })
+    await contractService.terminateContract(viewingContract.value!.id, terminateReason.value)
     contractList.value = contractList.value.map(c => c.id === viewingContract.value!.id ? { ...c, status: 'terminated' as ContractStatus } : c)
     terminateDialogVisible.value = false
     ElMessage.success('合同已终止')
@@ -211,7 +213,10 @@ const openRenewDialog = (row: Contract) => {
 const handleRenew = async () => {
   if (!renewForm.value.newEndDate) { ElMessage.warning('请选择新的到期日期'); return }
   try {
-    await masterApi.put(`/contracts/${viewingContract.value!.id}`, { endDate: renewForm.value.newEndDate, amount: renewForm.value.newAmount })
+    await contractService.renewContract(viewingContract.value!.id, {
+      newEndDate: renewForm.value.newEndDate,
+      newAmount: renewForm.value.newAmount,
+    })
     renewDialogVisible.value = false
     ElMessage.success('合同续约成功')
     loadData()

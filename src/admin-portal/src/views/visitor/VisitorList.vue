@@ -5,6 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting, UserFilled, MoreFilled } from '@e
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
+import { currentProject } from '@/stores/project'
 import { visitorApi } from '@/api/visitor'
 import { useFieldConfig } from '@/composables/useFieldConfig'
 
@@ -213,6 +214,7 @@ const handleSubmit = async () => {
       hostName: form.value.hostName,
       hostPhone: form.value.hostPhone || undefined,
       remarks: form.value.remark || undefined,
+      projectCode: currentProject.value?.code || '',
     }
     if (editingId.value) {
       await visitorApi.update(editingId.value, { remarks: form.value.remark })

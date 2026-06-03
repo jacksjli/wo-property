@@ -13,7 +13,7 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5006");
+ServiceRunner.ConfigurePort(builder, "AccessControlService", 5006);
 
 builder.Services.AddDbContext<AccessDbContext>(options =>
 {

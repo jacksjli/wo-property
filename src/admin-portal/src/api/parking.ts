@@ -1,26 +1,104 @@
-import { createHttpClient } from './http'
+import { ticketApi } from './http'
 
-const BASE_URL = 'http://localhost:5525'
-const parkingApi = createHttpClient(BASE_URL)
+// API 端点（匹配后端 ParkingController）
+const ENDPOINTS = {
+  PARKINGS: '/api/tenant/parkings',
+  PARKING: (id: number) => `/api/tenant/parkings/${id}`,
+  CHECK_IN: (id: number) => `/api/tenant/parkings/${id}/check-in`,
+  CHECK_OUT: (id: number) => `/api/tenant/parkings/${id}/check-out`,
+  RECORDS: '/api/tenant/parkings/records',
+}
 
-export interface ParkingRecord {
-  id: number
-  plateNumber: string
-  ownerName: string
-  ownerPhone: string
-  parkingSpace: string
-  startDate: string
-  endDate: string
+// 获取车位列表
+export const getParkings = async (params?: {
+  status?: string
+  spaceType?: string
+  page?: number
+  pageSize?: number
+  keyword?: string
+  buildingId?: number
+}) => {
+  const response = await ticketApi.get(ENDPOINTS.PARKINGS, { params })
+  return response
+}
+
+// 获取单个车位
+export const getParking = async (id: number) => {
+  const response = await ticketApi.get(ENDPOINTS.PARKING(id))
+  return response
+}
+
+// 创建车位
+export const createParking = async (data: {
+  parkingSpaceNumber: string
+  buildingId?: number
+  floor?: number
+  spaceType: string
+  licensePlate?: string
+  residentId?: number
+  startDate?: string
+  endDate?: string
+  monthlyFee?: number
   status: string
-  createdAt: string
+}) => {
+  const response = await ticketApi.post(ENDPOINTS.PARKINGS, data)
+  return response
 }
 
-export const parkingApi = {
-  getAll: (params?: any) => parkingApi.get('/api/tenant/parking', { params }),
-  getById: (id: number) => parkingApi.get(`/api/tenant/parking/${id}`),
-  create: (data: Partial<ParkingRecord>) => parkingApi.post('/api/tenant/parking', data),
-  update: (id: number, data: Partial<ParkingRecord>) => parkingApi.put(`/api/tenant/parking/${id}`, data),
-  delete: (id: number) => parkingApi.delete(`/api/tenant/parking/${id}`),
+// 更新车位
+export const updateParking = async (id: number, data: {
+  parkingSpaceNumber?: string
+  buildingId?: number
+  floor?: number
+  spaceType?: string
+  licensePlate?: string
+  residentId?: number
+  startDate?: string
+  endDate?: string
+  monthlyFee?: number
+  status?: string
+}) => {
+  const response = await ticketApi.put(ENDPOINTS.PARKING(id), data)
+  return response
 }
 
-export default parkingApi
+// 删除车位
+export const deleteParking = async (id: number) => {
+  const response = await ticketApi.delete(ENDPOINTS.PARKING(id))
+  return response
+}
+
+// 车辆入场
+export const checkInParking = async (id: number, data: { licensePlate: string }) => {
+  const response = await ticketApi.post(ENDPOINTS.CHECK_IN(id), data)
+  return response
+}
+
+// 车辆出场
+export const checkOutParking = async (id: number, data: { licensePlate: string }) => {
+  const response = await ticketApi.post(ENDPOINTS.CHECK_OUT(id), data)
+  return response
+}
+
+// 获取停车记录
+export const getParkingRecords = async (params?: {
+  page?: number
+  pageSize?: number
+  parkingId?: number
+  startDate?: string
+  endDate?: string
+}) => {
+  const response = await ticketApi.get(ENDPOINTS.RECORDS, { params })
+  return response
+}
+
+export default {
+  getParkings,
+  getParking,
+  createParking,
+  updateParking,
+  deleteParking,
+  checkInParking,
+  checkOutParking,
+  getParkingRecords,
+}

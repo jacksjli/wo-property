@@ -11,6 +11,19 @@ namespace WO.Property.ContractService.Controllers;
 [Authorize]
 public class ContractsController : ControllerBase
 {
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
+
     private readonly ContractDbContext _context;
     
     public ContractsController(ContractDbContext context)
@@ -23,22 +36,30 @@ public class ContractsController : ControllerBase
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetContracts(
-        [FromQuery] ContractType? type = null,
-        [FromQuery] ContractStatus? status = null,
+        [FromQuery] string? type = null,
+        [FromQuery] string? status = null,
         [FromQuery] string? keyword = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
         var query = _context.Contracts.AsQueryable();
+
+            // 按 project_code 过滤（单租户多项目）
+            var projectCode = GetProjectCode();
+            if (!string.IsNullOrEmpty(projectCode))
+            {
+                query = query.Where(x => x.ProjectCode == projectCode);
+            }
+
         
-        if (type.HasValue)
+        if (!string.IsNullOrEmpty(type))
         {
-            query = query.Where(c => c.Type == type.Value);
+            query = query.Where(c => c.Type == type);
         }
         
-        if (status.HasValue)
+        if (!string.IsNullOrEmpty(status))
         {
-            query = query.Where(c => c.Status == status.Value);
+            query = query.Where(c => c.Status == status);
         }
         
         if (!string.IsNullOrWhiteSpace(keyword))
@@ -97,7 +118,7 @@ public class ContractsController : ControllerBase
         // 生成合同编号
         if (string.IsNullOrEmpty(contract.ContractNumber))
         {
-            var year = DateTime.Now.Year;
+            var year = DateTime.UtcNow.Year;
             var count = await _context.Contracts
                 .Where(c => c.ContractNumber.StartsWith($"HT-{year}"))
                 .CountAsync() + 1;
@@ -180,21 +201,21 @@ public class ContractsController : ControllerBase
         var stats = new
         {
             total = await _context.Contracts.CountAsync(),
-            active = await _context.Contracts.CountAsync(c => c.Status == ContractStatus.Active),
+            active = await _context.Contracts.CountAsync(c => c.Status == "Active"),
             expiringSoon = await _context.Contracts.CountAsync(c => 
-                c.Status == ContractStatus.Active && 
+                c.Status == "Active" && 
                 c.EndDate <= thirtyDaysLater && 
                 c.EndDate > now),
             expired = await _context.Contracts.CountAsync(c => 
-                c.Status == ContractStatus.Expired || 
+                c.Status == "Expired" || 
                 c.EndDate < now),
-            draft = await _context.Contracts.CountAsync(c => c.Status == ContractStatus.Draft),
+            draft = await _context.Contracts.CountAsync(c => c.Status == "Draft"),
             totalAmount = await _context.Contracts
-                .Where(c => c.Status == ContractStatus.Active)
+                .Where(c => c.Status == "Active")
                 .SumAsync(c => c.Amount),
             byType = await _context.Contracts
                 .GroupBy(c => c.Type)
-                .Select(g => new { type = g.Key.ToString(), count = g.Count() })
+                .Select(g => new { type = g.Key, count = g.Count() })
                 .ToListAsync()
         };
         
@@ -217,7 +238,7 @@ public class ContractsController : ControllerBase
         // 创建新合同
         var newContract = new Contract
         {
-            ContractNumber = $"HT-{DateTime.Now.Year}-{id:D4}-R",
+            ContractNumber = $"HT-{DateTime.UtcNow.Year}-{id:D4}-R",
             Title = $"{contract.Title} (续签)",
             Type = contract.Type,
             Description = contract.Description,
@@ -229,9 +250,9 @@ public class ContractsController : ControllerBase
             PartyBPhone = contract.PartyBPhone,
             Amount = request.NewAmount > 0 ? request.NewAmount : contract.Amount,
             Currency = contract.Currency,
-            StartDate = contract.EndDate.AddDays(1),
+            StartDate = contract.EndDate?.AddDays(1) ?? DateTime.UtcNow,
             EndDate = request.NewEndDate,
-            Status = ContractStatus.Draft,
+            Status = "Draft",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -239,7 +260,7 @@ public class ContractsController : ControllerBase
         _context.Contracts.Add(newContract);
         
         // 更新原合同状态
-        contract.Status = ContractStatus.Terminated;
+        contract.Status = "Terminated";
         contract.UpdatedAt = DateTime.UtcNow;
         
         await _context.SaveChangesAsync();

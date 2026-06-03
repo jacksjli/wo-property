@@ -1,135 +1,307 @@
-# WO 物业管理软件文档
+# WO Property 物业管理软件 - 设计文档
 
-> **项目**：WO-Property-Management
-> **版本**：v1.0
-> **更新日期**：2026-05-06
-
----
-
-## 文档目录
-
-### ARCHITECTURE - 全局架构规范
-
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [API_DESIGN.md](./ARCHITECTURE/API_DESIGN.md) | API 设计标准、URL规范、响应格式 | 待评审 |
-| [SERVICE_COMMUNICATION.md](./ARCHITECTURE/SERVICE_COMMUNICATION.md) | 服务间通信协议、调用规范 | 待评审 |
-| [DATABASE_DESIGN.md](./ARCHITECTURE/DATABASE_DESIGN.md) | 数据库设计规范、表结构 | 待评审 |
-| [FIELD_NAMING.md](./ARCHITECTURE/FIELD_NAMING.md) | 字段命名规范、来源映射 | 待评审 |
-| [SECURITY.md](./ARCHITECTURE/SECURITY.md) | 安全设计规范、认证方案 | 待评审 |
-| [MODULE_GUIDELINES.md](./ARCHITECTURE/MODULE_GUIDELINES.md) | **模块化设计原则（新增/删除/修改）** | **已确认** |
+> 最后更新: 2026-05-27
+> 版本: v2.1
+> 状态: 运营中
 
 ---
 
-### STANDARDS - 代码/工程规范
+## 📋 文档目录
 
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [CODING_STANDARDS.md](./STANDARDS/CODING_STANDARDS.md) | C#/Vue 代码编写规范 | 待评审 |
-| [GIT_WORKFLOW.md](./STANDARDS/GIT_WORKFLOW.md) | Git 分支策略、提交流程 | 待评审 |
-| [CODE_REVIEW.md](./STANDARDS/CODE_REVIEW.md) | Code Review 规范、检查清单 | 待评审 |
+1. [系统架构](#系统架构)
+2. [服务列表](#服务列表)
+3. [数据库设计](#数据库设计)
+4. [API 设计规范](#api-设计规范)
+5. [多租户架构](#多租户架构)
+6. [开发规范](#开发规范)
+7. [当前状态](#当前状态)
 
 ---
 
-### MODULES - 模块级规范
+## 系统架构
 
-#### 工单模块 (ticket)
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [MODULES/ticket/DESIGN.md](./MODULES/ticket/DESIGN.md) | 工单模块设计、编号规范 | 已确认 |
-| [MODULES/ticket/API.md](./MODULES/ticket/API.md) | 工单 API 定义 | 已确认 |
-| [MODULES/ticket/FIELDS.md](./MODULES/ticket/FIELDS.md) | 工单字段定义 | 已确认 |
-| [MODULES/ticket/STATUS_FLOW.md](./MODULES/ticket/STATUS_FLOW.md) | 工单状态流转图 | 已确认 |
+### 整体架构
 
-#### 人员模块 (person)
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [MODULES/person/DESIGN.md](./MODULES/person/DESIGN.md) | 人员模块设计 | 待定 |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        客户端                                │
+│  (Vue3 Admin Portal / 微信小程序 / 移动端)                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    API Gateway (5000)                        │
+│              统一入口 - JWT认证 + 路由分发                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+│  公共服务     │     │  业务服务     │     │  基础服务     │
+│  - Auth       │     │  - Ticket    │     │  - MySQL     │
+│  - Person     │     │  - Dispatch  │     │  - Redis     │
+│  - Center     │     │  - Contract  │     └───────────────┘
+│  - MasterData │     │  - Material  │
+│               │     │  - Device    │
+│               │     │  - Finance   │
+│               │     │  - Inspection│
+└───────────────┘     └───────────────┘
+```
 
-#### 设备模块 (device)
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [MODULES/device/FIELDS.md](./MODULES/device/FIELDS.md) | 设备字段定义 | 待评审 |
+### 技术栈
 
-#### 其他模块
-| 模块 | 状态 |
+| 组件 | 技术 |
 |------|------|
-| material | 规划中 |
-| complaint | 规划中 |
-| key | 规划中 |
-| visitor | 规划中 |
-| payment | 规划中 |
-| contract | 规划中 |
-| masterdata | 规划中 |
-| finance | 规划中 |
-| announcement | 规划中 |
-| inspection | 规划中 |
-| parking | 规划中 |
-| dispatch | 规划中 |
+| 后端 | ASP.NET Core 8.0 微服务 |
+| 前端 | Vue3 + Vite + Element Plus |
+| 数据库 | MySQL 8.0 (单库多租户) |
+| 认证 | JWT Bearer Token |
+| 缓存 | (预留) Redis |
+| 部署 | Docker (预留) |
 
 ---
 
-### PROCESS - 跨模块流程
+## 服务列表
 
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [PROCESS/DEPLOYMENT.md](./PROCESS/DEPLOYMENT.md) | 部署文档、架构图 | 待评审 |
-| [PROCESS/MIGRATION.md](./PROCESS/MIGRATION.md) | 数据库迁移方案 | 待评审 |
-| [PROCESS/TESTING.md](./PROCESS/TESTING.md) | 测试策略、测试用例 | 待评审 |
+### 服务端口对照表
+
+| 服务名 | 端口 | 说明 | 数据库表 |
+|--------|------|------|---------|
+| GatewayService | 5000 | API网关，统一入口 | N/A |
+| AuthService | 5106 | 用户认证服务 | Users, RefreshTokens |
+| TicketService | 5102 | 工单管理 | Tickets, ticket_process_records |
+| DispatchService | 5241 | 智能派单 | dispatch_records, dispatch_rules |
+| PersonService | 5018 | 统一人员中心 | Personnel |
+| MasterDataService | 5019 | 基础数据+字段管理 | FieldDefinitions, ModuleFields |
+| MaterialService | 5504 | 物料管理 | materials |
+| NotificationService | 5105 | 通知服务 | Notifications |
+| DeviceService | 5530 | 设备管理 | Devices, DeviceTypes |
+| ContractService | 5501 | 合同管理 | Contracts |
+| FinanceService | 5509 | 财务管理 | FinanceRecords, PaymentRecords |
+| InspectionService | 5510 | 巡检管理 | InspectionRecords |
+| ComplaintService | 5201 | 投诉管理 | complaints |
+| KeyService | 5512 | 钥匙管理 | keys |
+| VisitorService | 5513 | 访客管理 | Visitors |
+| StatisticsService | 5250 | 统计服务 | MetricSnapshots, trend_records |
+| MobileService | 5526 | 移动端服务 | N/A |
+| CenterService | 5016 | 项目中心 | center_db.projects |
+
+### 服务状态
+
+**最后检查: 2026-05-27 16:45*/
+
+| 服务 | 状态 |
+|------|------|
+| Gateway | ✅ 正常 |
+| AuthService | ✅ 正常 |
+| TicketService | ✅ 正常 |
+| DispatchService | ✅ 正常 |
+| PersonService | ✅ 正常 |
+| MasterDataService | ✅ 正常 |
+| MaterialService | ✅ 正常 |
+| DeviceService | ✅ 正常 |
+| ContractService | ✅ 正常 |
+| FinanceService | ✅ 正常 |
+| InspectionService | ✅ 正常 |
+| ComplaintService | ⚠️ 待检查 |
+| KeyService | ✅ 正常 |
+| VisitorService | ✅ 正常 |
+| StatisticsService | ✅ 正常 |
+| MobileService | ✅ 正常 |
+| CenterService | ✅ 正常 |
 
 ---
 
-## 文档更新记录
+## 数据库设计
 
-| 日期 | 更新内容 | 更新人 |
-|------|---------|--------|
-| 2026-05-06 | 重构文档架构，从混合格式改为分层架构 | 软件负责人 |
+### 核心原则
+
+**数据库是唯一真相来源 (Database is the source of truth)**
+
+所有代码实现必须以数据库表结构为准。
+
+### 关键表结构
+
+详见: [SCHEMA_REFERENCE.md](../database/SCHEMA_REFERENCE.md)
+
+| 表名 | 说明 |
+|------|------|
+| Tickets | 工单主表 |
+| Contracts | 合同表 |
+| keys | 钥匙表 |
+| Visitors | 访客表 |
+| FinanceRecords | 财务记录 |
+| PaymentRecords | 支付记录 |
+| InspectionRecords | 巡检记录 |
+| materials | 物料表 |
+| Devices | 设备表 |
+| Personnel | 人员表 |
+| Buildings | 楼栋表 |
+| Rooms | 房间表 |
+| Residents | 住户表 |
+| complaints | 投诉表 |
+| dispatch_records | 派单记录 |
+
+### 字段映射规范
+
+```csharp
+// ❌ 错误：假设 EF 自动推断
+entity.Property(e => e.SomeField);
+
+// ✅ 正确：显式映射
+entity.Property(e => e.SomeField).HasColumnName("some_field");
+```
+
+### 类型映射
+
+| 数据库 | C# |
+|--------|-----|
+| varchar | string |
+| int | int |
+| bigint | long |
+| decimal | decimal |
+| datetime | DateTime? |
+| date | DateTime? |
+| time | TimeSpan? |
+| text | string? |
+
+### 枚举处理
+
+数据库存储字符串，不存储枚举名：
+
+```csharp
+// 数据库: "active", "pending", "completed"
+// 代码: string，不是 enum
+public string Status { get; set; }
+```
 
 ---
 
-## 旧文档（待清理）
+## API 设计规范
 
-以下旧文档将在确认迁移完成后删除：
+### 统一响应格式
+
+```json
+{
+  "success": true,
+  "message": "操作成功",
+  "data": { ... }
+}
+```
+
+### 认证
+
+- Header: `Authorization: Bearer <token>`
+- 多租户: Header: `X-Project: <project_code>`
+
+### API 路径规范
 
 ```
-docs/design/TICKET_SERVICE_ARCHITECTURE_v1.0.md  → 已迁移到 MODULES/ticket/
-docs/field-management/FIELD_CLASSIFICATION.md      → 已拆分到 ARCHITECTURE/FIELD_NAMING.md 和 MODULES/*/FIELDS.md
-docs/architecture/service-communication.md         → 已迁移到 ARCHITECTURE/
-docs/architecture/api-design.md                   → 已迁移到 ARCHITECTURE/
-docs/architecture/database-design.md               → 已迁移到 ARCHITECTURE/
-docs/architecture/security.md                     → 已迁移到 ARCHITECTURE/
-docs/architecture/mysql-migration.md              → 已迁移到 PROCESS/
-docs/architecture/implementation-plan.md          → 内容已过时，待清理
+/api/tenant/<module>/<resource>  # 多租户资源
+/api/suppliers                    # 公共服务
+/api/projects                     # 项目管理
+```
+
+### 详细规范
+
+见: [API_STANDARD.md](../API_STANDARD.md)
+
+---
+
+## 多租户架构
+
+### 单库多租户
+
+- 所有项目共用 `wo_property` 数据库
+- 通过 `center_db.projects` 表动态解析项目→数据库映射
+- TenantDbFactory 统一管理租户连接
+
+### 项目映射
+
+```sql
+-- center_db.projects 表
+project_code | database_name
+YGHY001      | wo_property
+```
+
+### TenantDbFactory
+
+每个服务都通过 TenantDbFactory 动态获取数据库连接：
+
+```csharp
+public string GetTenantConnectionString(string projectCode)
+{
+    // 1. 查询 center_db.projects 获取 database_name
+    // 2. 替换连接字符串中的数据库名
+    // 3. 返回完整连接字符串
+}
 ```
 
 ---
 
-## 贡献指南
+## 开发规范
 
-### 文档更新流程
+### Schema 验证流程
 
-1. 在对应模块目录下创建/修改文档
-2. 更新本 README.md 的文档索引
-3. 提交 PR 进行 Code Review
-4. 审核通过后合并
+**每次修改代码前必须执行：**
 
-### 文档命名规范
+1. **设计阶段**: 先查看 `docs/database/SCHEMA_REFERENCE.md`
+2. **实现阶段**: 使用显式 `HasColumnName()` 映射
+3. **验证阶段**: 运行 `./scripts/validate-schema.sh [服务名]`
+4. **文档阶段**: 修改后更新 `SCHEMA_REFERENCE.md`
 
+### 验证脚本
+
+```bash
+# 验证单个服务
+./scripts/validate-schema.sh KeyService
+
+# 验证所有表
+./scripts/validate-schema.sh
 ```
-✓ 正确：
-  - DESIGN.md (模块设计)
-  - API.md (API 定义)
-  - FIELDS.md (字段定义)
-  - STATUS_FLOW.md (状态流转)
-  - README.md (模块索引)
 
-✗ 错误：
-  - 模块设计_v1.0.md (包含版本号)
-  - 2026-05-06-设计.md (包含日期)
-```
+### 相关技能
+
+- `schema-validation`: Schema 验证工作流
+- `wo-document-audit`: 文档审计工作流
 
 ---
 
-## 联系方式
+## 当前状态
 
-如有文档问题，请联系软件架构师或软件负责人。
+### 2026-05-25 更新
+
+1. **修复的服务**: KeyService, InspectionService, FinanceService
+2. **问题**: 代码模型与数据库表结构不匹配
+3. **解决方案**: 重写模型层以匹配数据库实际结构
+
+### 创建的文件
+
+| 文件 | 说明 |
+|------|------|
+| `docs/database/SCHEMA_REFERENCE.md` | 完整数据库 Schema 对照表 |
+| `scripts/validate-schema.sh` | Schema 验证脚本 |
+| `skills/schema-validation/SKILL.md` | Schema 验证技能 |
+
+### 测试账号
+
+| 用户名 | 密码 | 角色 |
+|--------|------|------|
+| admin | Admin@123 | 管理员 |
+| tech | Tech@123 | 技术 |
+| user | User@123 | 普通用户 |
+
+### 项目代码
+
+- YGHY001 (远程物业)
+- 默认使用 YGHY001 进行测试
+
+---
+
+## 相关文档
+
+- [SCHEMA_REFERENCE.md](../database/SCHEMA_REFERENCE.md) - 数据库 Schema 完整参考
+- [API_STANDARD.md](../API_STANDARD.md) - API 设计规范
+- [AUDIT_LOG.md](../AUDIT_LOG.md) - 审计日志
+- [TICKET_SERVICE_ARCHITECTURE_v1.0.md](./design/TICKET_SERVICE_ARCHITECTURE_v1.0.md) - 工单服务架构
+- [SERVICE_REFACTOR_2026-05-25.md](./design/SERVICE_REFACTOR_2026-05-25.md) - 服务重构记录

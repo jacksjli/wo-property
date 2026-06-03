@@ -14,7 +14,7 @@ using WO.Property.CleaningService.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5516");
+ServiceRunner.ConfigurePort(builder, "CleaningService", 5516);
 
 builder.Services.AddDbContext<CleaningDbContext>(options =>
 {

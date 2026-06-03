@@ -5,6 +5,7 @@ using WO.Property.AnnouncementService.Models;
 using WO.Property.AnnouncementService.Tenant;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
 
 namespace WO.Property.AnnouncementService.Controllers;
 
@@ -18,19 +19,46 @@ public class TenantAnnouncementController : ControllerBase
 {
     private readonly IDbContextFactory<TenantDbContext> _dbFactory;
     private readonly ITenantDbFactory _tenantDbFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TenantAnnouncementController> _logger;
 
     public TenantAnnouncementController(
         IDbContextFactory<TenantDbContext> dbFactory,
         ITenantDbFactory tenantDbFactory,
+        IHttpClientFactory httpClientFactory,
         ILogger<TenantAnnouncementController> logger)
     {
         _dbFactory = dbFactory;
         _tenantDbFactory = tenantDbFactory;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
     private TenantDbContext CreateDbContext() => _dbFactory.CreateDbContext();
+
+    private async Task PublishAnnouncementEventAsync(string eventType, object data)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Gateway");
+            var payload = new
+            {
+                module = "announcement",
+                eventType = eventType,
+                data = data
+            };
+            var content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(payload),
+                Encoding.UTF8,
+                "application/json"
+            );
+            await client.PostAsync("/internal/events/publish", content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to publish announcement event: {EventType}", eventType);
+        }
+    }
 
     private int? GetUserIdFromJwt()
     {
@@ -48,6 +76,18 @@ public class TenantAnnouncementController : ControllerBase
         catch { return null; }
     }
 
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAnnouncements(
         [FromQuery] int page = 1,
@@ -60,6 +100,13 @@ public class TenantAnnouncementController : ControllerBase
         {
             using var db = CreateDbContext();
             var query = db.Announcements.AsQueryable();
+
+            // 按 project_code 过滤（单租户多项目）
+            var projectCode = GetProjectCode();
+            if (!string.IsNullOrEmpty(projectCode))
+            {
+                query = query.Where(a => a.ProjectCode == projectCode);
+            }
 
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(a => a.Status == status);
@@ -79,7 +126,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetAnnouncements failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -98,7 +145,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetAnnouncement failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -128,12 +175,23 @@ public class TenantAnnouncementController : ControllerBase
             db.Announcements.Add(announcement);
             await db.SaveChangesAsync();
 
+            // 发布公告创建事件
+            await PublishAnnouncementEventAsync("created", new
+            {
+                id = announcement.Id,
+                title = announcement.Title,
+                category = announcement.Category,
+                level = announcement.Level,
+                status = announcement.Status,
+                publisher = announcement.Publisher
+            });
+
             return Ok(new { success = true, data = announcement, message = "公告创建成功" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Create announcement failed");
-            return Ok(new { success = false, message = ex.Message, detail = ex.InnerException?.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误", detail = ex.InnerException?.Message });
         }
     }
 
@@ -159,7 +217,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Update announcement failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -181,7 +239,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Delete announcement failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -200,7 +258,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetDeviceReports failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -218,7 +276,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetTicketReports failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -236,7 +294,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetMaterialReports failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -254,7 +312,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetSatisfactionSurveys failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -273,7 +331,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetPurchaseOrders failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -294,7 +352,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetStockTransactions failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -314,7 +372,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetEnumDefinitions failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 
@@ -335,7 +393,7 @@ public class TenantAnnouncementController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetGeneralReports failed");
-            return Ok(new { success = false, message = ex.Message });
+            return StatusCode(500, new { success = false, message = "系统内部错误" });
         }
     }
 }

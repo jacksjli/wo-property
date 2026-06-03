@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
 using WO.Property.MasterDataService.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -8,6 +9,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 工种类型管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/job-types")]
 public class JobTypesController : ControllerBase
 {
@@ -34,7 +36,7 @@ public class JobTypesController : ControllerBase
         if (!string.IsNullOrEmpty(status)) conditions.Add("Status = @status");
         var where = conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
 
-        var sql = $"SELECT * FROM JobTypes {where} ORDER BY SortOrder, Id";
+        var sql = $"SELECT * FROM job_types {where} ORDER BY SortOrder, Id";
         var cmd = new MySqlCommand(sql, _db);
         if (ticketTypeId.HasValue) cmd.Parameters.AddWithValue("@ticketTypeId", ticketTypeId.Value);
         if (departmentId.HasValue) cmd.Parameters.AddWithValue("@departmentId", departmentId.Value);
@@ -52,7 +54,7 @@ public class JobTypesController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var cmd = new MySqlCommand("SELECT * FROM JobTypes WHERE Id = @id", _db);
+        var cmd = new MySqlCommand("SELECT * FROM job_types WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
@@ -65,15 +67,47 @@ public class JobTypesController : ControllerBase
         return NotFound(new { success = false, message = "工种类型不存在" });
     }
 
+    /// <summary>
+    /// 根据 ID 列表获取工种（用于反向查找工单类型）
+    /// </summary>
+    [HttpGet("by-ids")]
+    public async Task<IActionResult> GetByIds([FromQuery] string ids)
+    {
+        if (string.IsNullOrWhiteSpace(ids))
+            return Ok(new { success = true, data = new { jobTypes = new List<JobTypeItem>(), ticketTypeIds = new List<int>() } });
+
+        var idList = ids.Split(',').Select(s => int.TryParse(s.Trim(), out var n) ? n : 0).Where(n => n > 0).ToList();
+        if (!idList.Any())
+            return Ok(new { success = true, data = new { jobTypes = new List<JobTypeItem>(), ticketTypeIds = new List<int>() } });
+
+        var placeholders = string.Join(",", idList.Select((_, i) => $"@id{i}"));
+        var sql = $"SELECT * FROM job_types WHERE Id IN ({placeholders}) ORDER BY Id";
+        var cmd = new MySqlCommand(sql, _db);
+        for (int i = 0; i < idList.Count; i++) cmd.Parameters.AddWithValue($"@id{i}", idList[i]);
+
+        var jobTypes = new List<JobTypeItem>();
+        var ticketTypeIds = new HashSet<int>();
+        var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var item = MapJobType(reader);
+            jobTypes.Add(item);
+            if (item.ticket_type_id > 0) ticketTypeIds.Add(item.ticket_type_id);
+        }
+        await reader.CloseAsync();
+
+        return Ok(new { success = true, data = new { jobTypes, ticketTypeIds = ticketTypeIds.ToList() } });
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] JobTypeItem req)
     {
-        var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM JobTypes WHERE Code = @code", _db);
+        var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM job_types WHERE Code = @code", _db);
         checkCmd.Parameters.AddWithValue("@code", req.Code);
         if (Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0)
             return Ok(new { success = false, message = $"工种编号 '{req.Code}' 已存在" });
 
-        var sql = @"INSERT INTO JobTypes (Name, Code, Description, Category, ticket_type_id, department_id, Status, SortOrder)
+        var sql = @"INSERT INTO job_types (Name, Code, Description, Category, ticket_type_id, department_id, Status, SortOrder)
                     VALUES (@Name, @Code, @Description, @Category, @ticketTypeId, @departmentId, @Status, @SortOrder);
                     SELECT LAST_INSERT_ID();";
         var cmd = new MySqlCommand(sql, _db);
@@ -94,14 +128,14 @@ public class JobTypesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] JobTypeItem req)
     {
-        var checkCmd = new MySqlCommand("SELECT * FROM JobTypes WHERE Id = @id", _db);
+        var checkCmd = new MySqlCommand("SELECT * FROM job_types WHERE Id = @id", _db);
         checkCmd.Parameters.AddWithValue("@id", id);
         var reader = await checkCmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) { await reader.CloseAsync(); return Ok(new { success = false, message = "工种类型不存在" }); }
         await reader.CloseAsync();
 
         var updates = new List<string> { "Name = @name", "Code = @code", "Description = @description", "Category = @category", "ticket_type_id = @ticketTypeId", "department_id = @departmentId", "Status = @status", "SortOrder = @sortOrder", "UpdatedAt = @updatedAt" };
-        var cmd = new MySqlCommand($"UPDATE JobTypes SET {string.Join(", ", updates)} WHERE Id = @id", _db);
+        var cmd = new MySqlCommand($"UPDATE job_types SET {string.Join(", ", updates)} WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@name", req.Name);
         cmd.Parameters.AddWithValue("@code", req.Code);
@@ -121,7 +155,7 @@ public class JobTypesController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var cmd = new MySqlCommand("DELETE FROM JobTypes WHERE Id = @id", _db);
+        var cmd = new MySqlCommand("DELETE FROM job_types WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         var affected = await cmd.ExecuteNonQueryAsync();
         if (affected == 0)
@@ -146,12 +180,12 @@ public class JobTypesController : ControllerBase
             }
             try
             {
-                var existCmd = new MySqlCommand("SELECT Id FROM JobTypes WHERE Name = @name", _db);
+                var existCmd = new MySqlCommand("SELECT Id FROM job_types WHERE Name = @name", _db);
                 existCmd.Parameters.AddWithValue("@name", row.Name);
                 var existsId = await existCmd.ExecuteScalarAsync();
                 if (existsId != null && existsId != DBNull.Value)
                 {
-                    var updateSql = @"UPDATE JobTypes SET Code = @code, Category = @category,
+                    var updateSql = @"UPDATE job_types SET Code = @code, Category = @category,
                         Description = @description, ticket_type_id = @ticketTypeId,
                         Status = @status, SortOrder = @sortOrder, UpdatedAt = @updatedAt
                         WHERE Name = @name";
@@ -169,7 +203,7 @@ public class JobTypesController : ControllerBase
                 }
                 else
                 {
-                    var insertSql = @"INSERT INTO JobTypes (Name, Code, Category, Description, ticket_type_id, Status, SortOrder)
+                    var insertSql = @"INSERT INTO job_types (Name, Code, Category, Description, ticket_type_id, Status, SortOrder)
                         VALUES (@name, @code, @category, @description, @ticketTypeId, @status, @sortOrder)";
                     var insertCmd = new MySqlCommand(insertSql, _db);
                     insertCmd.Parameters.AddWithValue("@name", row.Name);

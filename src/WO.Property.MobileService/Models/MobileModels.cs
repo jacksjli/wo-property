@@ -19,6 +19,9 @@ public class DeviceRegistration : BaseEntity
     [MaxLength(500)] public string? PushToken { get; set; }
     public bool NotificationsEnabled { get; set; } = true;
     public DateTime? LastActiveAt { get; set; }
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class PushNotification : BaseEntity
@@ -33,6 +36,9 @@ public class PushNotification : BaseEntity
     public bool IsSent { get; set; } = false;
     public DateTime? SentAt { get; set; }
     public DateTime? ReadAt { get; set; }
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class UserSession : BaseEntity
@@ -43,6 +49,9 @@ public class UserSession : BaseEntity
     [MaxLength(50)] public string SessionType { get; set; } = "QRLogin";
     public DateTime ExpiresAt { get; set; }
     public bool IsActive { get; set; } = true;
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class WeChatUser : BaseEntity
@@ -55,6 +64,9 @@ public class WeChatUser : BaseEntity
     [MaxLength(200)] public string? AvatarUrl { get; set; }
     [MaxLength(100)] public string? PhoneNumber { get; set; }
     [MaxLength(200)] public string? City { get; set; }
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class QuickEntry : BaseEntity
@@ -67,4 +79,9 @@ public class QuickEntry : BaseEntity
     public int SortOrder { get; set; } = 0;
     public bool IsActive { get; set; } = true;
     [MaxLength(50)] public string? Category { get; set; }
+
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+
 }

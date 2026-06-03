@@ -25,7 +25,7 @@ builder.Services.AddCors(options =>
 
 // Database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Server=127.0.0.1;Port=3306;Database=project_center;User=root;Password=;CharSet=utf8mb4;";
+    ?? "Server=127.0.0.1;Port=3306;Database=center_db;User=root;Password=;CharSet=utf8mb4;";
 builder.Services.AddDbContext<CenterDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
@@ -49,6 +49,11 @@ builder.Services.AddAuthentication().AddJwtBearer(options =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<ProjectDatabaseService>();
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(5016);
+});
 
 var app = builder.Build();
 
@@ -85,22 +90,27 @@ app.MapPost("/api/auth/login", async (LoginRequest request, CenterDbContext db) 
             {
                 Code = p.Code,
                 Name = p.Name,
-                DatabaseName = p.DatabaseName,
+                DatabaseName = p.DatabaseName ?? "",
                 Status = p.Status
             })
             .ToListAsync();
     }
     else
     {
-        projects = await db.ProjectMembers
+        // 非admin用户 - 通过project_members关联查询
+        var projectCodes = await db.ProjectMembers
             .Where(pm => pm.UserId == user.Id)
-            .Include(pm => pm.Project)
-            .Select(pm => new ProjectDto
+            .Select(pm => pm.ProjectCode)
+            .ToListAsync();
+        
+        projects = await db.Projects
+            .Where(p => projectCodes.Contains(p.Code) && p.Status == "active")
+            .Select(p => new ProjectDto
             {
-                Code = pm.Project!.Code,
-                Name = pm.Project.Name,
-                DatabaseName = pm.Project.DatabaseName,
-                Status = pm.Project.Status
+                Code = p.Code,
+                Name = p.Name,
+                DatabaseName = p.DatabaseName ?? "",
+                Status = p.Status
             })
             .ToListAsync();
     }
@@ -161,70 +171,43 @@ app.MapGet("/api/projects/{code}", async (string code, CenterDbContext db) =>
 
 app.MapGet("/api/members/{userId}", async (long userId, CenterDbContext db) =>
 {
-    var members = await db.ProjectMembers
+    var projectCodes = await db.ProjectMembers
         .Where(pm => pm.UserId == userId)
-        .Include(pm => pm.Project)
+        .Select(pm => pm.ProjectCode)
         .ToListAsync();
+    
+    var members = await db.Projects
+        .Where(p => projectCodes.Contains(p.Code))
+        .ToListAsync();
+    
     return Results.Json(new { success = true, data = members });
 });
 
 // POST /api/projects - 创建新项目
 app.MapPost("/api/projects", async (CreateProjectRequest request, CenterDbContext db, ProjectDatabaseService dbService) =>
 {
-    // 验证请求
-    if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name))
-    {
-        return Results.Json(new CreateProjectResponse { Success = false, Message = "项目代码和名称不能为空" });
-    }
-
     // 检查项目代码是否已存在
-    var existing = await db.Projects.FirstOrDefaultAsync(p => p.Code == request.Code);
-    if (existing != null)
+    if (await db.Projects.AnyAsync(p => p.Code == request.Code))
     {
-        return Results.Json(new CreateProjectResponse { Success = false, Message = $"项目代码 {request.Code} 已存在" });
+        return Results.Json(new { success = false, message = "项目代码已存在" });
     }
-
-    // 创建项目记录
+    
     var project = new Project
     {
-        Code = request.Code.ToLower(),
+        Code = request.Code,
         Name = request.Name,
-        DatabaseName = $"project_{request.Code.ToLower()}",
-        Status = "active",
         Description = request.Description,
         Address = request.Address,
         ContactPhone = request.ContactPhone,
-        Config = request.Config,
-        CreatedAt = DateTime.Now,
-        UpdatedAt = DateTime.Now
+        Status = request.Status ?? "active",
+        CreatedAt = DateTime.Now
     };
-
+    
     db.Projects.Add(project);
     await db.SaveChangesAsync();
-
-    // 创建项目数据库（异步，不阻塞响应）
-    _ = Task.Run(async () =>
-    {
-        Console.WriteLine($"[ProjectDatabase] 开始创建数据库 project_{request.Code}");
-        var (success, message) = await dbService.CreateProjectDatabaseAsync(request.Code);
-        Console.WriteLine($"[ProjectDatabase] 结果: {message}");
-    });
-
-    return Results.Json(new CreateProjectResponse
-    {
-        Success = true,
-        Message = $"项目 {request.Name} 创建成功，数据库正在初始化中",
-        Project = new ProjectDto
-        {
-            Code = project.Code,
-            Name = project.Name,
-            DatabaseName = project.DatabaseName,
-            Status = project.Status
-        }
-    });
+    
+    return Results.Json(new { success = true, data = project });
 });
-
-app.MapControllers();
 
 // GET /api/projects/{code}/modules - 获取项目模块配置
 app.MapGet("/api/projects/{code}/modules", async (string code, CenterDbContext db) =>
@@ -257,8 +240,7 @@ app.MapPut("/api/projects/{code}/modules", async (string code, List<string> modu
         {
             ProjectId = project.Id,
             ModuleKey = moduleKey,
-            SortOrder = sortOrder++,
-            Status = "active"
+            Enabled = true
         });
     }
     
@@ -272,39 +254,46 @@ app.MapDelete("/api/projects/{code}", async (string code, CenterDbContext db, Pr
     var project = await db.Projects.FirstOrDefaultAsync(p => p.Code == code);
     if (project == null)
     {
-        return Results.Json(new { success = false, message = "项目不存在" });
+        return Results.NotFound(new { success = false, message = "项目不存在" });
     }
     
-    var dbName = project.DatabaseName;
-    
-    // 删除数据库（异步）
-    _ = Task.Run(async () =>
+    // 检查是否有其他用户关联到这个项目
+    var memberCount = await db.ProjectMembers.CountAsync(pm => pm.ProjectCode == code);
+    if (memberCount > 0)
     {
-        Console.WriteLine($"[ProjectDatabase] 开始删除数据库 {dbName}");
-        var (success, message) = await dbService.DeleteProjectDatabaseAsync(code);
-        Console.WriteLine($"[ProjectDatabase] 删除结果: {message}");
-    });
+        return Results.Json(new { success = false, message = $"该项目还有 {memberCount} 个关联用户，请先删除关联" });
+    }
     
-    // 删除项目记录
+    // 删除项目模块配置
+    var modules = await db.ProjectModules.Where(m => m.ProjectId == project.Id).ToListAsync();
+    db.ProjectModules.RemoveRange(modules);
+    
+    // 删除项目
     db.Projects.Remove(project);
     await db.SaveChangesAsync();
     
-    return Results.Json(new { success = true, message = $"项目 {project.Name} 删除成功，数据库 {dbName} 正在删除中" });
+    return Results.Json(new { success = true, message = "项目已删除" });
 });
 
-// POST /api/projects/{code}/migrate - 升级项目数据库 Schema
-app.MapPost("/api/projects/{code}/migrate", async (string code, CenterDbContext db, ProjectDatabaseService dbService) =>
-{
-    var project = await db.Projects.FirstOrDefaultAsync(p => p.Code == code);
-    if (project == null)
-    {
-        return Results.Json(new { success = false, message = "项目不存在" });
-    }
-    
-    var (success, message, migratedTables) = await dbService.MigrateDatabaseAsync(code);
-    
-    return Results.Json(new { success, message, migratedTables });
-});
+// POST /api/projects/{code}/switch - 切换项目
+// app.MapPost("/api/projects/{code}/switch", async (string code, CenterDbContext db) =>
+// {
+//     var project = await db.Projects.FirstOrDefaultAsync(p => p.Code == code);
+//     if (project == null) return Results.NotFound(new { success = false, message = "项目不存在" });
+//     
+//     return Results.Json(new { success = true, message = "切换成功" });
+// });
 
+app.MapControllers();
 
 app.Run();
+
+public class CreateProjectRequest
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Address { get; set; }
+    public string? ContactPhone { get; set; }
+    public string? Status { get; set; }
+}

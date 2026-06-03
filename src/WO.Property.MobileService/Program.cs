@@ -23,7 +23,7 @@ builder.WebHost.UseUrls("http://0.0.0.0:5526");
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4",
-    ["ConnectionStrings:TenantDb"] = "Server=127.0.0.1;Port=3306;Database={db_name};User=root;Password=;CharSet=utf8mb4"
+    ["ConnectionStrings:TenantDb"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4"
 });
 
 // 添加数据库

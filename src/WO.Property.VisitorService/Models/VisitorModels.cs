@@ -61,6 +61,10 @@ public class Visitor
 
     [Column("updated_at")]
     public DateTime? UpdatedAt { get; set; }
+    
+    [Column("project_code")]
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 // 请求模型
@@ -106,4 +110,9 @@ public class ExternalPerson
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+
 }

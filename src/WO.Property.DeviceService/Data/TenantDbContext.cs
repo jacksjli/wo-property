@@ -15,6 +15,7 @@ public class TenantDbContext : DbContext
     public DbSet<DeviceCategory> DeviceCategories => Set<DeviceCategory>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
 
     public TenantDbContext(
         DbContextOptions<TenantDbContext> options,
@@ -49,6 +50,7 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.LastMaintenanceDate).HasColumnName("LastMaintenanceDate");
             entity.Property(e => e.NextMaintenanceDate).HasColumnName("NextMaintenanceDate");
             entity.Property(e => e.SupplierId).HasColumnName("SupplierId");
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
 
             // 忽略模型中不存在于DB的字段
             entity.Ignore(e => e.Model);
@@ -100,6 +102,29 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.IsDeleted);
         });
+
+        modelBuilder.Entity<Ticket>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("tickets");
+
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.TicketCode).HasColumnName("TicketNumber").HasMaxLength(50);
+            entity.Property(e => e.Title).HasColumnName("Title").HasMaxLength(100);
+            entity.Property(e => e.Description).HasColumnName("Description");
+            entity.Property(e => e.Category).HasColumnName("category").HasMaxLength(50);
+            entity.Property(e => e.Priority).HasColumnName("Priority").HasMaxLength(10);
+            entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
+            entity.Property(e => e.DispatchStatus).HasColumnName("DispatchStatus").HasMaxLength(50);
+            entity.Property(e => e.AssigneePersonId).HasColumnName("assignee_id");
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code").HasMaxLength(20);
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.BuildingId).HasColumnName("BuildingId");
+            entity.Property(e => e.Location).HasColumnName("Location").HasMaxLength(200);
+            entity.Property(e => e.TicketTypeId).HasColumnName("ticket_type_id");
+            entity.Property(e => e.JobTypeId).HasColumnName("jobTypeId");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+        });
     }
 }
 
@@ -128,6 +153,8 @@ public class Device
     public int? UpdatedBy { get; set; }
     public bool IsDeleted { get; set; }
 
+    public string? ProjectCode { get; set; }
+    
     // 模型中存在但DB不存在的字段（通过 EF 忽略）
     public string? Model { get; set; }
     public string? SerialNumber { get; set; }
@@ -166,4 +193,24 @@ public class MaintenanceRecord
 
     public int? UpdatedBy { get; set; }
     public bool IsDeleted { get; set; }
+}
+
+public class Ticket
+{
+    public int Id { get; set; }
+    public string TicketCode { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Category { get; set; }
+    public string? Priority { get; set; }
+    public string Status { get; set; } = "New";
+    public string? DispatchStatus { get; set; }
+    public int? AssigneePersonId { get; set; }
+    public string? ProjectCode { get; set; }
+    public int ProjectId { get; set; } = 1;
+    public int? BuildingId { get; set; }
+    public string? Location { get; set; }
+    public int? TicketTypeId { get; set; }
+    public int? JobTypeId { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

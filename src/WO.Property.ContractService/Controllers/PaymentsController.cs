@@ -24,7 +24,7 @@ public class PaymentsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetPayments(
         [FromQuery] int? contractId = null,
-        [FromQuery] PaymentStatus? status = null,
+        [FromQuery] string? status = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
@@ -37,9 +37,9 @@ public class PaymentsController : ControllerBase
             query = query.Where(p => p.ContractId == contractId.Value);
         }
         
-        if (status.HasValue)
+        if (!string.IsNullOrEmpty(status))
         {
-            query = query.Where(p => p.Status == status.Value);
+            query = query.Where(p => p.Status == status);
         }
         
         var total = await query.CountAsync();
@@ -91,7 +91,7 @@ public class PaymentsController : ControllerBase
         // 生成付款编号
         if (string.IsNullOrEmpty(payment.PaymentNumber))
         {
-            var year = DateTime.Now.Year;
+            var year = DateTime.UtcNow.Year;
             var count = await _context.Payments
                 .Where(p => p.PaymentNumber.StartsWith($"PAY-{year}"))
                 .CountAsync() + 1;
@@ -146,7 +146,7 @@ public class PaymentsController : ControllerBase
             return NotFound(new { success = false, message = "付款记录不存在" });
         }
         
-        payment.Status = PaymentStatus.Paid;
+        payment.Status = "Paid";
         payment.PaidDate = request.PaidDate ?? DateTime.UtcNow;
         payment.Remarks = request.Remarks;
         payment.UpdatedAt = DateTime.UtcNow;
@@ -186,18 +186,18 @@ public class PaymentsController : ControllerBase
         var stats = new
         {
             total = await _context.Payments.CountAsync(),
-            pending = await _context.Payments.CountAsync(p => p.Status == PaymentStatus.Pending),
-            paid = await _context.Payments.CountAsync(p => p.Status == PaymentStatus.Paid),
+            pending = await _context.Payments.CountAsync(p => p.Status == "Pending"),
+            paid = await _context.Payments.CountAsync(p => p.Status == "Paid"),
             overdue = await _context.Payments.CountAsync(p => 
-                p.Status == PaymentStatus.Pending && p.DueDate < now),
+                p.Status == "Pending" && p.DueDate < now),
             totalPendingAmount = await _context.Payments
-                .Where(p => p.Status == PaymentStatus.Pending)
+                .Where(p => p.Status == "Pending")
                 .SumAsync(p => p.Amount),
             totalPaidAmount = await _context.Payments
-                .Where(p => p.Status == PaymentStatus.Paid)
+                .Where(p => p.Status == "Paid")
                 .SumAsync(p => p.Amount),
             totalOverdueAmount = await _context.Payments
-                .Where(p => p.Status == PaymentStatus.Pending && p.DueDate < now)
+                .Where(p => p.Status == "Pending" && p.DueDate < now)
                 .SumAsync(p => p.Amount)
         };
         

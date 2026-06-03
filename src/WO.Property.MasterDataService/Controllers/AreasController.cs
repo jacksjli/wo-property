@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
 using WO.Property.MasterDataService.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -8,6 +9,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 区域管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/areas")]
 public class AreasController : ControllerBase
 {

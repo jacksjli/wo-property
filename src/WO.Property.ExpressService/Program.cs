@@ -13,7 +13,7 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5517");
+ServiceRunner.ConfigurePort(builder, "ExpressService", 5517);
 
 // ─── Phase 1 多租户组件注册 ───
 builder.Services.AddHttpContextAccessor();

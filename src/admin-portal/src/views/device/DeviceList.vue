@@ -5,7 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting, Tools, Document } from '@element-
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { getDevices, createDevice, updateDevice, deleteDevice, getDeviceStatistics, submitDeviceRepair } from '@/api/device'
 import { useFieldConfig } from '@/composables/useFieldConfig'
 
 // 权限验证
@@ -154,9 +154,23 @@ const getStatusType = (status: string) => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/devices', { params: { page: 1, pageSize: 200 } })
-    if (res.success) {
-      deviceList.value = res.data || []
+    const res: any = await getDevices({ page: 1, pageSize: 200 })
+    deviceList.value = res.data || res || []
+    // 同时加载统计数据
+    try {
+      const statsRes: any = await getDeviceStatistics()
+      if (statsRes && typeof statsRes === 'object') {
+        stats.value = {
+          total: statsRes.total || deviceList.value.length,
+          normal: statsRes.normal || 0,
+          maintenance: statsRes.maintenance || 0,
+          fault: statsRes.fault || 0,
+          disabled: statsRes.disabled || 0,
+          needInspection: statsRes.needInspection || 0
+        }
+      }
+    } catch (e) {
+      // stats 失败不影响主数据加载
     }
   } catch (e: any) {
     ElMessage.error(e.message || '加载设备数据失败')
@@ -222,10 +236,10 @@ const handleSubmit = async () => {
 
   try {
     if (editingId.value) {
-      await masterApi.put(`/devices/${editingId.value}`, form.value)
+      await updateDevice(editingId.value, form.value)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/devices', form.value)
+      await createDevice(form.value)
       ElMessage.success('添加成功')
     }
     dialogVisible.value = false
@@ -243,7 +257,7 @@ const handleDelete = async (row: any) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await masterApi.delete(`/devices/${row.id}`)
+    await deleteDevice(row.id)
     ElMessage.success('删除成功')
     await loadData()
   } catch (e: any) {
@@ -278,7 +292,14 @@ const handleSubmitMaintenance = async () => {
     return
   }
   try {
-    await masterApi.post(`/devices/${viewingDevice.value!.id}/maintenance`, maintenanceForm.value)
+    await submitDeviceRepair(viewingDevice.value!.id, {
+      maintenanceType: maintenanceForm.value.type,
+      maintenanceDate: maintenanceForm.value.date,
+      description: maintenanceForm.value.description,
+      technician: maintenanceForm.value.handler,
+      cost: maintenanceForm.value.cost,
+      notes: maintenanceForm.value.remark
+    })
     maintenanceDialogVisible.value = false
     ElMessage.success('维修记录已添加')
     await loadData()

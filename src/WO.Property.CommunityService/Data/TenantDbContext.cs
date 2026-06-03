@@ -10,6 +10,8 @@ public class TenantDbContext : DbContext
 
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<ActivityEnrollment> ActivityEnrollments => Set<ActivityEnrollment>();
+    public DbSet<Notice> Notices => Set<Notice>();
+    public DbSet<Suggestion> Suggestions => Set<Suggestion>();
 
     public TenantDbContext(
         DbContextOptions<TenantDbContext> options,
@@ -59,6 +61,44 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.EnrolledAt).HasColumnName("enrolled_at");
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.UpdatedBy);
+            entity.Ignore(e => e.UpdatedAt);
+            entity.Ignore(e => e.IsDeleted);
+        });
+
+        modelBuilder.Entity<Notice>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("CommunityNotices");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Title).HasColumnName("Title");
+            entity.Property(e => e.Content).HasColumnName("Content");
+            entity.Property(e => e.Type).HasColumnName("Type");
+            entity.Property(e => e.Status).HasColumnName("Status");
+            entity.Property(e => e.ProjectId).HasColumnName("ProjectId");
+            entity.Property(e => e.Top).HasColumnName("Top");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.CreatedBy);
+            entity.Ignore(e => e.UpdatedBy);
+            entity.Ignore(e => e.UpdatedAt);
+            entity.Ignore(e => e.IsDeleted);
+        });
+
+        modelBuilder.Entity<Suggestion>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.ToTable("CommunitySuggestions");
+            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.ProjectId).HasColumnName("ProjectId");
+            entity.Property(e => e.Title).HasColumnName("Title");
+            entity.Property(e => e.Content).HasColumnName("Content");
+            entity.Property(e => e.ContactName).HasColumnName("ContactName");
+            entity.Property(e => e.ContactPhone).HasColumnName("ContactPhone");
+            entity.Property(e => e.Status).HasColumnName("Status");
+            entity.Property(e => e.Reply).HasColumnName("Reply");
+            entity.Property(e => e.RepliedAt).HasColumnName("RepliedAt");
+            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").ValueGeneratedOnAdd();
+            entity.Ignore(e => e.CreatedBy);
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);

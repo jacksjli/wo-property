@@ -4,11 +4,13 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
 using WO.Property.MasterDataService.DTOs;
+using Microsoft.AspNetCore.Authorization;
 
 /// <summary>
 /// 财务记录API（收支记录）
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/finance-records")]
 public class FinanceRecordsController : ControllerBase
 {

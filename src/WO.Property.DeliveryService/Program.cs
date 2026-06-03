@@ -15,7 +15,7 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:5017");
+ServiceRunner.ConfigurePort(builder, "DeliveryService", 5017);
 
 // MySQL 连接字符串管理 - 支持 X-Project 动态切换
 builder.Services.AddSingleton<TenantConfigLoader>();

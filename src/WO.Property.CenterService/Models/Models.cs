@@ -5,14 +5,14 @@ public class Project
     public long Id { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public string DatabaseName { get; set; } = string.Empty;
+    public string? DatabaseName { get; set; }
     public string Status { get; set; } = "active";
     public string? Config { get; set; }
     public string? Description { get; set; }
     public string? Address { get; set; }
     public string? ContactPhone { get; set; }
     public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public class User
@@ -27,7 +27,7 @@ public class User
     public string Status { get; set; } = "active";
     public DateTime? LastLoginAt { get; set; }
     public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public class ProjectMember
@@ -37,11 +37,7 @@ public class ProjectMember
     public string ProjectCode { get; set; } = string.Empty;
     public string Role { get; set; } = "viewer";
     public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-
-    // Navigation
-    public Project? Project { get; set; }
-    public User? User { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public class ProjectModule
@@ -49,13 +45,7 @@ public class ProjectModule
     public long Id { get; set; }
     public long ProjectId { get; set; }
     public string ModuleKey { get; set; } = string.Empty;
-    public string? Config { get; set; }
-    public int SortOrder { get; set; }
-    public string Status { get; set; } = "active";
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    // Navigation
-    public Project? Project { get; set; }
+    public bool Enabled { get; set; } = true;
 }
 
 public class LoginRequest

@@ -26,7 +26,8 @@ public class TenantDbContextFactory : ITenantDbFactory, IDbContextFactory<Tenant
         if (string.IsNullOrEmpty(_currentTenantCode))
             return _defaultConnectionString;
         
-        return _tenantDbConnectionStringTemplate.Replace("{db_name}", $"wo_tenant_{_currentTenantCode}");
+        // 统一使用 wo_property 数据库
+        return _tenantDbConnectionStringTemplate.Replace("{db_name}", "wo_property");
     }
 
     public TenantDbContext CreateDbContext()

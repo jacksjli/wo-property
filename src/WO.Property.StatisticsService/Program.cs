@@ -13,7 +13,7 @@ using WO.Property.StatisticsService.Tenant;
 var builder = WebApplication.CreateBuilder(args);
 
 // 配置端口
-builder.WebHost.UseUrls("http://0.0.0.0:5241");
+ServiceRunner.ConfigurePort(builder, "StatisticsService", 5250);
 
 // Tenant 支持
 builder.Services.AddSingleton<TenantConfigLoader>();

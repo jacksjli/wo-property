@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using WO.Property.VisitorService.Data;
 using WO.Property.VisitorService.Models;
@@ -6,9 +7,23 @@ using WO.Property.VisitorService.Models;
 namespace WO.Property.VisitorService.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/tenant/visitor/visitors")]
 public class TenantVisitorController : ControllerBase
 {
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
+
     private readonly IDbContextFactory<TenantDbContext> _dbFactory;
     private readonly ILogger<TenantVisitorController> _logger;
 
@@ -33,6 +48,12 @@ public class TenantVisitorController : ControllerBase
         {
             using var db = CreateDbContext();
             var query = db.Visitors.AsQueryable();
+
+            var projectCode = GetProjectCode();
+            if (!string.IsNullOrEmpty(projectCode))
+            {
+                query = query.Where(x => x.ProjectCode == projectCode);
+            }
 
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(v => v.Status == status);

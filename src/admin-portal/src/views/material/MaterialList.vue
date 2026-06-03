@@ -5,6 +5,7 @@ import { Plus, Edit, Delete, Refresh, Setting } from '@element-plus/icons-vue'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields } from '@/stores/fieldConfig'
+import { currentProject } from '@/stores/project'
 import { materialApi } from '@/api/http'
 import { useFieldConfig } from '@/composables/useFieldConfig'
 
@@ -184,6 +185,7 @@ const handleSubmit = async () => {
       Status: form.value.status || 'normal',
       Supplier: form.value.supplier || '',
       Remark: form.value.remark || '',
+      ProjectCode: currentProject.value?.code || '',
     }
 
     if (editingId.value) {

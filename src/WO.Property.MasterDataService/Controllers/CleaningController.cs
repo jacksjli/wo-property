@@ -3,6 +3,7 @@ using MySqlConnector;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -10,6 +11,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 清洁管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/cleaning-records")]
 public class CleaningController : ControllerBase
 {

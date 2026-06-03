@@ -13,10 +13,11 @@ using WO.Property.PaymentService.Tenant;
 using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://0.0.0.0:5507");
+ServiceRunner.ConfigurePort(builder, "PaymentService", 5109);
 // Tenant 支持
 builder.Services.AddSingleton<TenantConfigLoader>();
-builder.Services.AddSingleton<ITenantDbFactory, TenantDbFactory>();
+builder.Services.AddSingleton<WO.Property.PaymentService.Tenant.ITenantDbFactory, WO.Property.PaymentService.Tenant.TenantDbFactory>();
+builder.Services.AddScoped<IDbContextFactory<WO.Property.PaymentService.Data.TenantDbContext>, WO.Property.PaymentService.Data.TenantDbContextFactory>();
 
 builder.Services.AddDbContext<PaymentDbContext>((sp, options) =>
 {
@@ -31,7 +32,7 @@ var jwtKey = jwtSettings["SecretKey"] ?? JwtHelper.GetSecretKey();
 var jwtIssuer = jwtSettings["Issuer"] ?? "wo-property-unified-auth";
 var jwtAudience = jwtSettings["Audience"] ?? "wo-property-services";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(opts => {
-    opts.TokenValidationParameters = new TokenValidationParameters { ValidateIssuer = true, ValidateAudience = true, ValidateLifetime = true, ValidateIssuerSigningKey = true, IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)) };
+    opts.TokenValidationParameters = new TokenValidationParameters { ValidateIssuer = true, ValidateAudience = true, ValidateLifetime = true, ValidateIssuerSigningKey = true, ValidIssuer = jwtIssuer, ValidAudience = jwtAudience, IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)) };
 });
 builder.Services.AddAuthorization();
 builder.Services.ConfigureHttpJsonOptions(opts => {
@@ -47,6 +48,13 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
     });
+
+builder.Services.AddHttpClient("Gateway", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5000");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 builder.Services.AddCors(options => options.AddPolicy("AllowFrontend", policy => {
     var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins")
         .Get<string[]>() ?? new[] { "http://localhost:5173" };

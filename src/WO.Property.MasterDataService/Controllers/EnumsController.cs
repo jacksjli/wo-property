@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -6,6 +7,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 枚举值API - 提供字段相关的枚举选项
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/enums")]
 public class EnumsController : ControllerBase
 {

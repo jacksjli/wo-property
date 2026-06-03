@@ -1,413 +1,179 @@
-# WO物业管理软件 - 部署指南
+# WO 物业管理软件 — 部署文档
 
-## 目录
-
-1. [环境要求](#环境要求)
-2. [开发环境部署](#开发环境部署)
-3. [Docker部署](#docker部署)
-4. [生产环境配置](#生产环境配置)
-5. [常见问题](#常见问题)
+> 最后更新：2026-06-02
+> 版本：v1.3
 
 ---
 
-## 环境要求
-
-### 最低要求
-
-| 组件 | 最低配置 |
-|------|----------|
-| CPU | 2核 |
-| 内存 | 4GB |
-| 磁盘 | 20GB |
-| 操作系统 | Ubuntu 20.04 / CentOS 8 / macOS 12+ |
-
-### 推荐配置
-
-| 组件 | 推荐配置 |
-|------|----------|
-| CPU | 4核+ |
-| 内存 | 8GB+ |
-| 磁盘 | 50GB+ |
-| 操作系统 | Ubuntu 22.04 LTS |
-
-### 软件依赖
-
-- .NET 8 SDK
-- Node.js 18+
-- Docker Engine 24+
-- Docker Compose 2.20+
-
----
-
-## 开发环境部署
-
-### 1. 克隆项目
+## 快速启动
 
 ```bash
-git clone <repository-url>
-cd WO-Property-Management
-```
+# 首次部署（或换网络环境）
+bash setup.sh
 
-### 2. 启动后端服务
+# 启动所有服务
+bash start-all.sh
 
-#### 方式一：分别启动每个服务
-
-```bash
-cd src
-
-# 启动认证服务
-cd WO.Property.AuthService
-dotnet run
-# 服务地址: http://localhost:5006
-
-# 新开终端，启动物料服务
-cd WO.Property.MaterialService
-dotnet run
-# 服务地址: http://localhost:5004
-
-# 以此类推...
-```
-
-#### 方式二：批量启动脚本
-
-创建 `start-all-services.sh`:
-
-```bash
-#!/bin/bash
-
-SERVICES=(
-  "WO.Property.AuthService:5006"
-  "WO.Property.MaterialService:5004"
-  "WO.Property.NotificationService:5005"
-  "WO.Property.ContractService:5008"
-  "WO.Property.FinanceService:5009"
-  "WO.Property.InspectionService:5010"
-  "WO.Property.ComplaintService:5011"
-  "WO.Property.KeyService:5012"
-  "WO.Property.VisitorService:5013"
-  "WO.Property.StatisticsService:5014"
-  "WO.Property.MobileService:5015"
-)
-
-for svc in "${SERVICES[@]}"; do
-  name="${svc%%:*}"
-  port="${svc##*:}"
-  echo "Starting $name on port $port..."
-  cd "$name" && nohup dotnet run > "$name.log" 2>&1 &
-  cd ..
-  sleep 2
-done
-
-echo "All services started!"
-echo "Check status at:"
-for svc in "${SERVICES[@]}"; do
-  port="${svc##*:}"
-  echo "  http://localhost:$port/health"
-done
-```
-
-运行:
-
-```bash
-chmod +x start-all-services.sh
-./start-all-services.sh
-```
-
-### 3. 启动前端
-
-```bash
-cd src/admin-portal
-
-# 安装依赖
-npm install
-
-# 开发模式启动
-npm run dev
-# 访问地址: http://localhost:5173
-
-# 或构建生产版本
-npm run build
-# 构建产物在 dist/ 目录
-```
-
-### 4. 验证部署
-
-访问各服务健康检查端点:
-
-```bash
-for port in 5004 5005 5006 5008 5009 5010 5011 5012 5013 5014 5015; do
-  echo -n "Port $port: "
-  curl -s http://localhost:$port/health | grep -o '"service":"[^"]*"' || echo "NOT RUNNING"
-done
-```
-
-预期输出:
-```
-Port 5004: "service":"MaterialService"
-Port 5005: "service":"NotificationService"
-Port 5006: "service":"AuthService"
-...
+# 停止所有服务
+bash stop-all.sh
 ```
 
 ---
 
-## Docker部署
+## 系统架构
 
-### 1. 前置准备
-
-确保已安装Docker和Docker Compose:
-
-```bash
-docker --version
-docker-compose --version
 ```
-
-### 2. 构建所有服务
-
-#### 构建 .NET 服务
-
-```bash
-cd WO-Property-Management
-
-# 构建所有微服务
-for svc in WO.Property.AuthService WO.Property.MaterialService \
-           WO.Property.NotificationService WO.Property.ContractService \
-           WO.Property.FinanceService WO.Property.InspectionService \
-           WO.Property.ComplaintService WO.Property.KeyService \
-           WO.Property.VisitorService WO.Property.StatisticsService \
-           WO.Property.MobileService; do
-    echo "Building $svc..."
-    dotnet publish src/$svc -c Release -o src/$svc/bin/Release/net8.0/publish
-done
-```
-
-#### 构建前端
-
-```bash
-cd src/admin-portal
-npm install
-npm run build
-```
-
-### 3. 配置环境变量 (可选)
-
-创建 `.env` 文件:
-
-```bash
-# 数据库配置
-POSTGRES_DB=wo_property
-POSTGRES_USER=woproperty
-POSTGRES_PASSWORD=YourSecurePassword123!
-
-# JWT配置
-JWT_SECRET=YourSecureJWTSecretKey2026ForProduction
-JWT_ISSUER=wo-property-unified-auth
-JWT_AUDIENCE=wo-property-services
-
-# 环境
-ASPNETCORE_ENVIRONMENT=Production
-```
-
-### 4. 启动服务
-
-```bash
-cd WO-Property-Management
-
-# 启动所有服务 (前台运行)
-docker-compose up
-
-# 或后台运行
-docker-compose up -d
-
-# 查看状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f
-
-# 查看特定服务日志
-docker-compose logs -f auth-service
-```
-
-### 5. 访问服务
-
-| 服务 | 地址 |
-|------|------|
-| 管理后台 | http://localhost:3000 |
-| Nginx | http://localhost:80 |
-| 认证服务 | http://localhost:5006 |
-| API测试 | http://localhost:80/api/auth/health |
-
-### 6. 停止服务
-
-```bash
-# 停止所有服务 (保留数据卷)
-docker-compose down
-
-# 停止并删除数据卷 (慎用!)
-docker-compose down -v
-
-# 完全清理
-docker-compose down --rmi all -v
+┌─────────────────────────────────────────┐
+│           手机 / 微信小程序              │
+│         (http://本机IP:5173)            │
+└────────────────┬──────────────────────┘
+                  │ HTTP/WebSocket
+┌────────────────▼──────────────────────┐
+│          GatewayService :5000          │
+│     (路由 + 鉴权 + 多租户过滤)          │
+└────┬───┬───┬───┬───┬───┬───┬───┬───┬───┘
+     │   │   │   │   │   │   │   │   │
+  ┌──▼─┐ ┌▼──┐ ┌▼──┐ ┌▼──┐ ┌▼──┐ ┌▼──┐ ┌▼──┐
+  │Auth│ │Tick│ │Disc│ │Pers│ │Mast│ │...│ │...│
+  │5106│ │5102│ │5241│ │5018│ │5019│ │...│ │...│
+  └────┘ └────┘ └────┘ └────┘ └────┘ └────┘
 ```
 
 ---
 
-## 生产环境配置
+## 服务端口一览
 
-### 1. Nginx HTTPS配置
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| GatewayService | 5000 | API 网关，统一入口 |
+| AuthService | 5106 | 用户认证 |
+| TicketService | 5102 | 工单管理 |
+| DispatchService | 5241 | 智能派单 |
+| PersonService | 5018 | 人员中心 |
+| MasterDataService | 5019 | 基础数据+字段管理 |
+| MaterialService | 5504 | 物料管理 |
+| NotificationService | 5105 | 通知服务 |
+| PaymentService | 5109 | 支付服务 |
+| DeviceService | 5530 | 设备管理 |
+| ContractService | 5501 | 合同管理 |
+| FinanceService | 5509 | 财务管理 |
+| InspectionService | 5510 | 巡检管理 |
+| ComplaintService | 5201 | 投诉管理 |
+| KeyService | 5512 | 钥匙管理 |
+| VisitorService | 5513 | 访客管理 |
+| StatisticsService | 5250 | 统计服务 |
+| MobileService | 5526 | 移动端聚合 |
+| CommunityService | 5522 | 社区服务 |
+| ParkingService | 5525 | 停车服务 |
+| RenovationService | 5521 | 装修服务 |
+| admin-portal | 5173 | 管理后台前端 |
 
-创建 `nginx.ssl.conf`:
+---
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
+## IP 自动检测机制
 
-    ssl_certificate /etc/nginx/ssl/certificate.crt;
-    ssl_certificate_key /etc/nginx/ssl/private.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
+**原理：**
+- 启动时自动检测本机局域网 IP（`en0` 接口）
+- 对比 `.server-ip` 文件记录的上次 IP
+- 如果变化了，自动更新所有相关配置文件
 
-    # 其他配置同 docker/nginx.conf
-}
+**影响的配置文件：**
+- `admin-portal/src/api/*.ts` — 管理后台 API 地址
+- `admin-portal/src/stores/*.ts` — WebSocket 地址
+- `woa-property-mini/src/config/env.js` — 小程序 API 地址
+- `woa-property-mini/src/App.vue` — 小程序全局配置
+- `src/*/appsettings.json` — 后端 CORS 配置
 
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$server_name$request_uri;
+**无需手动改任何文件** — 换网络后重新运行 `start-all.sh` 即可。
+
+---
+
+## 多 Mac 部署
+
+### 架构
+```
+Mac A（主机）          Mac B（副机）
+├─ Gateway:5000       ├─ TicketService:5102
+├─ AuthService:5106   ├─ PersonService:5018
+├─ ...                └─ MasterDataService:5019
+
+手机 → Mac A Gateway → 按需路由到 Mac B 的服务
+```
+
+### 部署步骤
+
+**Mac A（已有服务）：**
+```bash
+bash start-all.sh
+```
+
+**Mac B（新机器）：**
+```bash
+git clone <项目>
+bash setup.sh    # 输入 Mac A 的 IP
+bash start-all.sh # 只启动分配给自己的服务
+```
+
+**配置文件 `config/ports.json`：**
+```json
+{
+  "name": "TicketService",
+  "port": 5102,
+  "hosts": ["mac-a", "mac-b"],   // 哪些机器跑这个服务
+  "primary": "mac-a"             // 主实例
 }
 ```
 
-### 2. PostgreSQL生产配置
+### 服务分组（推荐）
+- **核心组**（必须和 Gateway 同机）：AuthService、TicketService、DispatchService、PersonService、MasterDataService
+- **业务组**（可分散）：其他 15 个业务服务
+- **前端组**：admin-portal（5173）
+
+---
+
+## 数据库
+
+- **MySQL**：`wo_property` 数据库（统一库）
+- 位置：本地 `/usr/local/var/mysql/`
+- 字符集：`utf8mb4`
+- 迁移：`dotnet ef database update` 或手动执行 SQL
+
+---
+
+## 日志
+
+- 位置：`/Users/mac/Projects/WO-Property-Management/logs/`
+- 服务独立日志文件
+- 健康检查看门狗：`scripts/service-watchdog.sh`（每 5 分钟执行）
+
+---
+
+## 测试账号
+
+| 账号 | 密码 | 角色 |
+|------|------|------|
+| admin | Admin@123 | 系统管理员 |
+| tech | Tech@123 | 技术人员 |
+| user | User@123 | 普通用户（业主） |
+
+---
+
+## 微信小程序
+
+- 代码：`src/woa-property-mini/`
+- 编译：`npm run build:mp-weixin`
+- 产物：`dist/` 目录，用微信开发者工具打开并上传
+
+---
+
+## 健康检查
 
 ```bash
-# 创建生产数据库
-docker exec -it wo-property-postgres psql -U woproperty -d wo_property
-
-# 在psql中执行
-CREATE DATABASE wo_property_production;
-ALTER DATABASE wo_property_production SET timezone TO 'Asia/Shanghai';
-```
-
-### 3. 数据备份
-
-#### 备份脚本 `backup.sh`:
-
-```bash
-#!/bin/bash
-DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR=/backups/wo-property
-mkdir -p $BACKUP_DIR
-
-# 备份数据库
-docker exec wo-property-postgres pg_dump -U woproperty wo_property > $BACKUP_DIR/db_$DATE.sql
-
-# 备份配置文件
-tar -czf $BACKUP_DIR/config_$DATE.tar.gz docker/
-
-# 保留最近30天备份
-find $BACKUP_DIR -mtime +30 -delete
-
-echo "Backup completed: $DATE"
-```
-
-### 4. 监控配置
-
-推荐使用:
-- **Prometheus** - 指标收集
-- **Grafana** - 可视化
-- **Loki** - 日志收集
-- **AlertManager** - 告警
-
-### 5. 服务更新
-
-```bash
-# 拉取最新代码
-git pull
-
-# 重新构建
-for svc in WO.Property.*; do
-    dotnet publish src/$svc -c Release -o src/$svc/bin/Release/net8.0/publish
+# 单次检查
+for port in 5000 5106 5102 5241 5018 5019; do
+  curl -s http://localhost:$port/health
 done
 
-cd src/admin-portal && npm run build && cd ../..
-
-# 重启服务
-docker-compose down
-docker-compose up -d
-
-# 查看更新后的版本
-docker-compose exec auth-service dotnet --version
+# 看门狗自动重启（已在 cron 中配置）
+crontab -l | grep service-watchdog
 ```
-
----
-
-## 常见问题
-
-### Q1: 服务启动失败，端口被占用
-
-```bash
-# 查看端口占用
-lsof -i :5006
-
-# 或
-netstat -tlnp | grep 5006
-
-# 杀死占用进程
-kill -9 <PID>
-```
-
-### Q2: 数据库连接失败
-
-```bash
-# 检查PostgreSQL容器状态
-docker-compose ps postgres
-
-# 查看日志
-docker-compose logs postgres
-
-# 重启数据库
-docker-compose restart postgres
-```
-
-### Q3: 前端无法连接后端API
-
-1. 检查后端服务是否运行
-2. 检查Nginx代理配置
-3. 检查CORS设置
-4. 检查JWT Token是否有效
-
-### Q4: Docker构建失败
-
-```bash
-# 清理Docker缓存
-docker system prune -a
-
-# 重新构建
-docker-compose build --no-cache
-```
-
-### Q5: 内存不足
-
-```bash
-# 增加Docker内存限制
-# Docker Desktop -> Settings -> Resources -> Memory: 8GB+
-```
-
-### Q6: HTTPS证书问题
-
-```bash
-# 使用Let's Encrypt免费证书
-certbot --nginx -d your-domain.com
-
-# 或使用自签名证书 (测试环境)
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout private.key -out certificate.crt
-```
-
----
-
-## 联系支持
-
-如有问题，请联系开发团队。

@@ -68,6 +68,11 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
+builder.Services.AddHttpClient("Gateway", client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5000");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 
 // ─── Phase 1 多租户组件注册 ───
 builder.Services.AddHttpContextAccessor();
@@ -351,69 +356,69 @@ using (var scope = app.Services.CreateScope())
     
     // 使用原始SQL创建表（确保多服务共享数据库时表都能创建）
     await dbContext.Database.ExecuteSqlRawAsync(@"
-        CREATE TABLE IF NOT EXISTS ""Notifications"" (
-            ""Id"" SERIAL PRIMARY KEY,
-            ""UserId"" INT NOT NULL DEFAULT 0,
-            ""Title"" VARCHAR(500) NOT NULL,
-            ""Content"" TEXT NOT NULL,
-            ""Type"" VARCHAR(50) NOT NULL,
-            ""Priority"" VARCHAR(20) NOT NULL DEFAULT 'Normal',
-            ""IsRead"" BOOLEAN NOT NULL DEFAULT FALSE,
-            ""ReadAt"" TIMESTAMP,
-            ""RelatedEntityType"" VARCHAR(100),
-            ""RelatedEntityId"" INT,
-            ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS `Notifications` (
+            `Id` SERIAL PRIMARY KEY,
+            `UserId` INT NOT NULL DEFAULT 0,
+            `Title` VARCHAR(500) NOT NULL,
+            `Content` TEXT NOT NULL,
+            `Type` VARCHAR(50) NOT NULL,
+            `Priority` VARCHAR(20) NOT NULL DEFAULT 'Normal',
+            `IsRead` BOOLEAN NOT NULL DEFAULT FALSE,
+            `ReadAt` TIMESTAMP,
+            `RelatedEntityType` VARCHAR(100),
+            `RelatedEntityId` INT,
+            `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        CREATE TABLE IF NOT EXISTS ""MessageTemplates"" (
-            ""Id"" SERIAL PRIMARY KEY,
-            ""Name"" VARCHAR(200) NOT NULL,
-            ""Type"" VARCHAR(50) NOT NULL,
-            ""Subject"" VARCHAR(500) NOT NULL,
-            ""Content"" TEXT NOT NULL,
-            ""Variables"" TEXT,
-            ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ""UpdatedAt"" TIMESTAMP
+        CREATE TABLE IF NOT EXISTS `MessageTemplates` (
+            `Id` SERIAL PRIMARY KEY,
+            `Name` VARCHAR(200) NOT NULL,
+            `Type` VARCHAR(50) NOT NULL,
+            `Subject` VARCHAR(500) NOT NULL,
+            `Content` TEXT NOT NULL,
+            `Variables` TEXT,
+            `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `UpdatedAt` TIMESTAMP
         );
-        CREATE TABLE IF NOT EXISTS ""Announcements"" (
-            ""Id"" SERIAL PRIMARY KEY,
-            ""Title"" VARCHAR(500) NOT NULL,
-            ""Content"" TEXT NOT NULL,
-            ""Type"" VARCHAR(50) NOT NULL,
-            ""IsTop"" BOOLEAN NOT NULL DEFAULT FALSE,
-            ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
-            ""Priority"" VARCHAR(20) NOT NULL DEFAULT 'Normal',
-            ""StartDate"" TIMESTAMP NOT NULL,
-            ""EndDate"" TIMESTAMP,
-            ""CreatedBy"" INT NOT NULL,
-            ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS `Announcements` (
+            `Id` SERIAL PRIMARY KEY,
+            `Title` VARCHAR(500) NOT NULL,
+            `Content` TEXT NOT NULL,
+            `Type` VARCHAR(50) NOT NULL,
+            `IsTop` BOOLEAN NOT NULL DEFAULT FALSE,
+            `IsActive` BOOLEAN NOT NULL DEFAULT TRUE,
+            `Priority` VARCHAR(20) NOT NULL DEFAULT 'Normal',
+            `StartDate` TIMESTAMP NOT NULL,
+            `EndDate` TIMESTAMP,
+            `CreatedBy` INT NOT NULL,
+            `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        CREATE TABLE IF NOT EXISTS ""TicketReports"" (
-            ""Id"" SERIAL PRIMARY KEY,
-            ""TicketNumber"" VARCHAR(50) NOT NULL,
-            ""Title"" VARCHAR(200) NOT NULL,
-            ""Status"" VARCHAR(50) NOT NULL,
-            ""Priority"" VARCHAR(20) NOT NULL,
-            ""AssignedTo"" INT,
-            ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ""ResolvedAt"" TIMESTAMP
+        CREATE TABLE IF NOT EXISTS `TicketReports` (
+            `Id` SERIAL PRIMARY KEY,
+            `TicketNumber` VARCHAR(50) NOT NULL,
+            `Title` VARCHAR(200) NOT NULL,
+            `Status` VARCHAR(50) NOT NULL,
+            `Priority` VARCHAR(20) NOT NULL,
+            `AssignedTo` INT,
+            `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `ResolvedAt` TIMESTAMP
         );
-        CREATE TABLE IF NOT EXISTS ""DeviceReports"" (
-            ""Id"" SERIAL PRIMARY KEY,
-            ""Code"" VARCHAR(50) NOT NULL,
-            ""Name"" VARCHAR(200) NOT NULL,
-            ""Status"" VARCHAR(50) NOT NULL,
-            ""MaintenanceType"" VARCHAR(100),
-            ""MaintenanceCost"" DECIMAL(18,2),
-            ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS `DeviceReports` (
+            `Id` SERIAL PRIMARY KEY,
+            `Code` VARCHAR(50) NOT NULL,
+            `Name` VARCHAR(200) NOT NULL,
+            `Status` VARCHAR(50) NOT NULL,
+            `MaintenanceType` VARCHAR(100),
+            `MaintenanceCost` DECIMAL(18,2),
+            `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        CREATE TABLE IF NOT EXISTS ""MaterialReports"" (
-            ""Id"" SERIAL PRIMARY KEY,
-            ""Code"" VARCHAR(50) NOT NULL,
-            ""Name"" VARCHAR(200) NOT NULL,
-            ""CurrentStock"" INT NOT NULL DEFAULT 0,
-            ""SafetyStock"" INT NOT NULL DEFAULT 0,
-            ""UnitPrice"" DECIMAL(18,2) NOT NULL DEFAULT 0,
-            ""CreatedAt"" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS `MaterialReports` (
+            `Id` SERIAL PRIMARY KEY,
+            `Code` VARCHAR(50) NOT NULL,
+            `Name` VARCHAR(200) NOT NULL,
+            `CurrentStock` INT NOT NULL DEFAULT 0,
+            `SafetyStock` INT NOT NULL DEFAULT 0,
+            `UnitPrice` DECIMAL(18,2) NOT NULL DEFAULT 0,
+            `CreatedAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     ");
     
@@ -578,6 +583,9 @@ public class NotificationDbContext : DbContext
 public class Notification
 {
     public int Id { get; set; }
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
     public int UserId { get; set; } // 0表示全体用户
     public string Title { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;

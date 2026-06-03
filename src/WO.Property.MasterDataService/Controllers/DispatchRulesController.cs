@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/dispatch-rules")]
 public class DispatchRulesController : ControllerBase
 {

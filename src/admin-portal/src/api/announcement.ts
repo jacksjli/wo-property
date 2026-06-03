@@ -1,4 +1,4 @@
-import http from './http'
+import { announcementApi } from './http'
 
 // 公告分类
 export const ANNOUNCEMENT_CATEGORIES = [
@@ -14,34 +14,61 @@ export const ANNOUNCEMENT_CATEGORIES = [
 const toBackendData = (form: any) => ({
   title: form.title,
   content: form.content,
-  type: form.category,
-  priority: form.level || 'Normal',
+  category: form.category,
+  level: form.level || 'Normal',
   isTop: form.isPinned || false,
-  status: form.status || 'draft'
+  status: form.status === 'published' ? 'Published' : 'Draft'
 })
 
-export const announcementApi = {
-  getList: (params?: { page?: number; pageSize?: number; status?: string; type?: string }) => {
-    return http.get('/api/tenant/announcements', { params })
-  },
-  
-  getById: (id: number) => {
-    return http.get(`/api/tenant/announcements/${id}`)
-  },
-  
-  create: (data: any) => {
-    return http.post('/api/tenant/announcements', toBackendData(data))
-  },
-  
-  update: (id: number, data: any) => {
-    return http.put(`/api/tenant/announcements/${id}`, toBackendData(data))
-  },
-  
-  delete: (id: number) => {
-    return http.delete(`/api/tenant/announcements/${id}`)
-  },
-  
-  getCategories: () => {
-    return Promise.resolve({ data: ANNOUNCEMENT_CATEGORIES })
-  }
+// 获取公告列表
+export const getAnnouncementList = async (params?: {
+  page?: number
+  pageSize?: number
+  status?: string
+  type?: string
+  keyword?: string
+}) => {
+  return announcementApi.get('/api/tenant/announcements', { params })
 }
+
+// 获取单个公告
+export const getAnnouncementById = async (id: number) => {
+  return announcementApi.get(`/api/tenant/announcements/${id}`)
+}
+
+// 创建公告
+export const createAnnouncement = async (data: any) => {
+  return announcementApi.post('/api/tenant/announcements', toBackendData(data))
+}
+
+// 更新公告
+export const updateAnnouncement = async (id: number, data: any) => {
+  return announcementApi.put(`/api/tenant/announcements/${id}`, toBackendData(data))
+}
+
+// 删除公告
+export const deleteAnnouncement = async (id: number) => {
+  return announcementApi.delete(`/api/tenant/announcements/${id}`)
+}
+
+// 发布公告
+export const publishAnnouncement = async (id: number) => {
+  return announcementApi.post(`/api/tenant/announcements/${id}/publish`)
+}
+
+// 获取分类选项
+export const getAnnouncementCategories = () => {
+  return Promise.resolve({ data: ANNOUNCEMENT_CATEGORIES })
+}
+
+export const announcementSvc = {
+  getList: getAnnouncementList,
+  getById: getAnnouncementById,
+  create: createAnnouncement,
+  update: updateAnnouncement,
+  delete: deleteAnnouncement,
+  publish: publishAnnouncement,
+  getCategories: getAnnouncementCategories
+}
+
+export default announcementSvc

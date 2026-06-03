@@ -2,8 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WO.Property.DeviceService.Data;
 using System.Text;
+using System.Net.Http.Json;
 using DeviceEntity = WO.Property.DeviceService.Data.Device;
 using MaintenanceEntity = WO.Property.DeviceService.Data.MaintenanceRecord;
+using TicketEntity = WO.Property.DeviceService.Data.Ticket;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.DeviceService.Controllers;
 
@@ -11,17 +14,34 @@ namespace WO.Property.DeviceService.Controllers;
 /// 设备多租户 API 控制器
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/tenant/devices")]
 public class TenantDeviceController : ControllerBase
 {
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
+
     private readonly IDbContextFactory<TenantDbContext> _dbFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TenantDeviceController> _logger;
 
     public TenantDeviceController(
         IDbContextFactory<TenantDbContext> dbFactory,
+        IHttpClientFactory httpClientFactory,
         ILogger<TenantDeviceController> logger)
     {
         _dbFactory = dbFactory;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -76,6 +96,14 @@ public class TenantDeviceController : ControllerBase
         using var db = CreateDbContext();
         var query = db.Devices.AsQueryable();
 
+            // 按 project_code 过滤（单租户多项目）
+            var projectCode = GetProjectCode();
+            if (!string.IsNullOrEmpty(projectCode))
+            {
+                query = query.Where(x => x.ProjectCode == projectCode);
+            }
+
+
         if (categoryId.HasValue)
             query = query.Where(d => d.DeviceTypeId == categoryId.Value);
 
@@ -114,6 +142,7 @@ public class TenantDeviceController : ControllerBase
     public async Task<IActionResult> CreateDevice([FromBody] CreateTenantDeviceRequest request)
     {
         using var db = CreateDbContext();
+        var projectCode = GetProjectCode() ?? "UNKNOWN";
 
         var device = new DeviceEntity
         {
@@ -130,6 +159,7 @@ public class TenantDeviceController : ControllerBase
             Status = request.Status ?? "Active",
             CurrentStatus = request.CurrentStatus ?? "Normal",
             Remarks = request.Remarks,
+            ProjectCode = projectCode,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -245,6 +275,139 @@ public class TenantDeviceController : ControllerBase
 
         return Ok(new { success = true, data = record, message = "维护记录创建成功" });
     }
+
+    /// <summary>
+    /// 设备报修（创建工单）
+    /// </summary>
+    [HttpPost("{id}/repair")]
+    public async Task<IActionResult> CreateDeviceRepairTicket(int id, [FromBody] DeviceRepairRequest request)
+    {
+        using var db = CreateDbContext();
+
+        var device = await db.Devices.FindAsync(id);
+        if (device == null)
+            return NotFound(new { success = false, message = "设备不存在" });
+
+        var projectCode = GetProjectCode() ?? "UNKNOWN";
+
+        var projectId = request.ProjectId ?? 1;
+
+        // 生成工单编号
+        var yearMonth = DateTime.Now.ToString("yyyyMM");
+        var prefix = $"{projectCode}-WO-{yearMonth}-";
+        var lastTicket = db.Tickets
+            .Where(t => t.TicketCode.StartsWith(prefix))
+            .OrderByDescending(t => t.TicketCode)
+            .FirstOrDefault();
+        int seq = lastTicket == null ? 10001 : int.Parse(lastTicket.TicketCode.Substring(prefix.Length)) + 1;
+        var ticketNo = $"{prefix}{seq}";
+
+        var ticket = new TicketEntity
+        {
+            TicketCode = ticketNo,
+            Title = $"[设备报修] {device.Name}",
+            Description = request.Description ?? $"设备 {device.Name}（编号：{device.Code}）需要维修\n故障描述：{request.FaultDescription}",
+            Category = "设备维修",
+            Priority = request.Priority ?? "Medium",
+            Status = "New",
+            ProjectCode = projectCode,
+            ProjectId = projectId,
+            BuildingId = device.BuildingId,
+            Location = device.Location,
+            TicketTypeId = request.TicketTypeId,
+            JobTypeId = request.JobTypeId,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        db.Tickets.Add(ticket);
+        await db.SaveChangesAsync();
+
+        _logger.LogInformation("Device repair ticket created: {TicketCode} for device {DeviceId}", ticket.TicketCode, id);
+
+        // 自动派单
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var token = Request.Headers["Authorization"].FirstOrDefault();
+            var dispatchPayload = new
+            {
+                TicketId = ticket.Id,
+                TicketCode = ticket.TicketCode,
+                JobTypeId = ticket.JobTypeId ?? 0,
+                TicketTypeId = ticket.TicketTypeId ?? 0,
+                AreaId = 0,
+                BuildingId = ticket.BuildingId ?? 0,
+                ProjectId = projectId
+            };
+            var dispatchRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5241/api/tenant/dispatch/auto")
+            {
+                Content = JsonContent.Create(dispatchPayload)
+            };
+            if (!string.IsNullOrEmpty(token))
+                dispatchRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Replace("Bearer ", ""));
+            var dispatchResponse = await client.SendAsync(dispatchRequest);
+            if (dispatchResponse.IsSuccessStatusCode)
+            {
+                ticket.DispatchStatus = "Dispatched";
+                var dispatchResult = await dispatchResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                if (dispatchResult.TryGetProperty("data", out var dataEl) &&
+                    dataEl.TryGetProperty("personId", out var personIdEl))
+                {
+                    ticket.AssigneePersonId = personIdEl.GetInt32();
+                }
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Auto-dispatch failed: {Message}", ex.Message);
+        }
+
+        return Ok(new { success = true, data = ticket, message = "报修工单已创建" });
+    }
+
+    /// <summary>
+    /// 获取设备统计
+    /// </summary>
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetDeviceStats()
+    {
+        using var db = CreateDbContext();
+        var projectCode = GetProjectCode();
+
+        IQueryable<DeviceEntity> query = db.Devices;
+        if (!string.IsNullOrEmpty(projectCode))
+            query = query.Where(d => d.ProjectCode == projectCode);
+
+        var total = await query.CountAsync();
+        var activeCount = await query.CountAsync(d => d.Status == "Active");
+        var maintenanceCount = await query.CountAsync(d => d.Status == "Maintenance");
+        var scrappedCount = await query.CountAsync(d => d.Status == "Scrapped");
+        var normalCount = await query.CountAsync(d => d.CurrentStatus == "Normal");
+        var faultCount = await query.CountAsync(d => d.CurrentStatus == "Fault");
+
+
+        var categoryStats = await query
+            .Where(d => d.DeviceTypeId != null)
+            .GroupBy(d => d.DeviceTypeId)
+            .Select(g => new { deviceTypeId = g.Key, count = g.Count() })
+            .ToListAsync();
+
+        var recentDevices = await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Take(5)
+            .Select(d => new { d.Id, d.Code, d.Name, d.Status, d.CurrentStatus, d.CreatedAt })
+            .ToListAsync();
+
+        return Ok(new { success = true, data = new
+        {
+            total,
+            status = new { active = activeCount, maintenance = maintenanceCount, scrapped = scrappedCount },
+            currentStatus = new { normal = normalCount, fault = faultCount },
+            categoryDistribution = categoryStats,
+            recentDevices
+        }});
+    }
 }
 
 // 请求模型
@@ -291,4 +454,14 @@ public class CreateMaintenanceRecordRequest
     public decimal Cost { get; set; }
     public decimal Hours { get; set; }
     public string? Remarks { get; set; }
+}
+
+public class DeviceRepairRequest
+{
+    public string? Description { get; set; }
+    public string? FaultDescription { get; set; }
+    public string? Priority { get; set; }
+    public int? ProjectId { get; set; }
+    public int? TicketTypeId { get; set; }
+    public int? JobTypeId { get; set; }
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -7,6 +8,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 用户管理API（角色分配）
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/users")]
 public class UsersController : ControllerBase
 {

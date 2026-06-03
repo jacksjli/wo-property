@@ -1,21 +1,33 @@
 {
-  "project": "wo-property-multi-project",
-  "version": "2.0",
-  "databaseMode": "multi",
-  "centerDatabase": "project_center",
+  "project": "wo-property-management",
+  "version": "3.0",
+  "architecture": "single-tenant-multi-project",
   "database": {
     "type": "mysql",
     "server": "127.0.0.1",
     "port": 3306,
+    "database": "wo_property",
     "username": "root",
     "password": "",
     "charset": "utf8mb4"
   },
+  "projects": [
+    {
+      "code": "YGHY001",
+      "name": "阳光花园小区",
+      "status": "active"
+    },
+    {
+      "code": "YGXY001",
+      "name": "阳光新苑",
+      "status": "inactive"
+    }
+  ],
   "tenants": {
     "wo_property": {
-      "displayName": "原始数据库",
+      "displayName": "WO物业管理",
       "databaseName": "wo_property",
-      "status": "active"
+      "status": "Active"
     }
   }
 }

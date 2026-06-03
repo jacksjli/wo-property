@@ -1,7 +1,8 @@
-# 工单模块架构设计文档（v3.0）
+# 工单模块架构设计文档（v3.1）
 
-**版本：** v3.0
-**日期：** 2026-05-19
+**版本：** v3.1
+**日期：** 2026-05-26
+**更新说明：** 新增工单处理时间节点字段
 **作者：** 软件项目负责人
 **状态：** ✅ 已确认（指导性文件）
 
@@ -551,3 +552,99 @@ public string BuildConnectionString(string tenantCode)
 
 **最后更新**：2026-05-19 19:13
 **更新内容**：新增第十三章「租户配置方案（方案C）」
+
+---
+
+## 十四、工单时间节点（v3.1 新增）
+
+### 14.1 背景
+
+为了支持工单处理时效统计和人员绩效考核，需要记录工单每个处理阶段的时间点。
+
+### 14.2 时间字段说明
+
+| 字段 | 说明 | 触发时机 |
+|------|------|---------|
+| `assigned_at` | 派单时间 | 调用派单 API 时 |
+| `started_at` | 开始处理时间 | 调用接单/开始处理 API 时 |
+| `finished_at` | 完成时间 | 调用完成 API 时 |
+| `completed_at` | 确认完成时间 | 调用评价/确认 API 时 |
+
+### 14.3 数据库结构
+
+```sql
+ALTER TABLE tickets ADD COLUMN assigned_at DATETIME COMMENT '派单时间';
+ALTER TABLE tickets ADD COLUMN started_at DATETIME COMMENT '开始处理时间';
+ALTER TABLE tickets ADD COLUMN finished_at DATETIME COMMENT '完成时间';
+ALTER TABLE tickets ADD COLUMN completed_at DATETIME COMMENT '确认完成时间';
+```
+
+### 14.4 API 响应示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 47,
+    "ticketCode": "WO-2026-0005",
+    "status": "Closed",
+    "rating": 5,
+    "assignedAt": "2026-05-26T03:50:38",
+    "startedAt": "2026-05-26T03:50:40",
+    "finishedAt": "2026-05-26T03:50:45",
+    "completedAt": "2026-05-26T03:50:47"
+  }
+}
+```
+
+---
+
+## 十五、超时设置 API（v3.1 新增）
+
+### 15.1 API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/timeout/rules` | 获取所有超时规则 |
+| PUT | `/api/timeout/rules/{id}` | 更新指定规则 |
+| POST | `/api/timeout/rules/reset` | 重置为默认配置 |
+
+### 15.2 超时规则表结构
+
+```sql
+CREATE TABLE timeout_rules (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    color       VARCHAR(20) NOT NULL COMMENT 'green/blue/orange/red',
+    role        VARCHAR(50) NOT NULL COMMENT 'operator/supervisor/manager/department_head/company_head',
+    hours       INT DEFAULT 24 COMMENT '超时小时数',
+    enabled     TINYINT(1) DEFAULT 1,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_color_role (color, role)
+);
+```
+
+### 15.3 默认配置
+
+| 颜色 | 操作员 | 主管 | 经理 | 部门负责人 | 公司负责人 |
+|------|--------|------|------|-----------|-----------|
+| 🟢 green | 24h | 24h | 24h | 24h | 24h |
+| 🔵 blue | 12h | 12h | 12h | 12h | 12h |
+| 🟠 orange | 6h | 6h | 6h | 6h | 6h |
+| 🔴 red | 2h | 2h | 2h | 2h | 2h |
+
+### 15.4 优先级 → 超时颜色映射
+
+```javascript
+const priorityToTimeoutColor = {
+  'Urgent': 'red',    // 紧急 → 2小时超时
+  'High': 'orange',  // 高 → 6小时超时
+  'Medium': 'blue',  // 中 → 12小时超时
+  'Low': 'green'      // 低 → 24小时超时
+};
+```
+
+---
+
+**最后更新**：2026-05-26 12:06
+**更新内容**：新增第十四章「工单时间节点」和第十五章「超时设置 API」

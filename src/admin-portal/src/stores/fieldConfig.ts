@@ -316,9 +316,8 @@ const SHARED_FIELDS = {
 const ALIAS_MAP: Record<string, string> = {
   // 工单模块
   'ticket.ticketCode': 'ticketCode',
-  'ticket.creatorName': 'name',
   'ticket.assigneeName': 'name',
-  'ticket.contactName': 'name',
+  'ticket.contactPersonName': 'name',
   'ticket.contactPhone': 'phone',
   'ticket.category': 'category',
 
@@ -396,13 +395,11 @@ const TICKET_DEFAULT_FIELDS: FieldConfig[] = [
   { id: 3, module: 'ticket', name: '工单类型', key: 'category', type: 'select', defaultValue: 'Repair', required: true, status: 'Active', width: 100, options: ['Repair', 'Access', 'Cleaning', 'Security', 'Other'], classification: 'shared', source: 'MasterDataService', aliasOf: 'type' },
   { id: 4, module: 'ticket', name: '优先级', key: 'priority', type: 'select', defaultValue: 'Normal', required: true, status: 'Active', width: 80, options: ['High', 'Normal', 'Low'], classification: 'shared', source: 'MasterDataService', aliasOf: 'priority' },
   { id: 5, module: 'ticket', name: '工单状态', key: 'status', type: 'select', defaultValue: 'Open', required: true, status: 'Active', width: 100, options: ['New', 'Open', 'Dispatched', 'Processing', 'Escalated', 'Finished', 'Resolved', 'Closed'], classification: 'system', source: 'System', aliasOf: 'status' },
-  { id: 7, module: 'ticket', name: '创建人', key: 'creatorName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
-  { id: 8, module: 'ticket', name: '创建时间', key: 'createdAt', type: 'date', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'system', source: 'System', aliasOf: 'createdAt' },
   { id: 9, module: 'ticket', name: '指派人', key: 'assigneeName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
-  { id: 12, module: 'ticket', name: '联系人', key: 'contactName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
+  { id: 12, module: 'ticket', name: '联系人', key: 'contactPersonName', type: 'text', defaultValue: '', required: false, status: 'Active', width: 100, classification: 'shared', source: 'PersonService', aliasOf: 'name' },
   { id: 13, module: 'ticket', name: '联系电话', key: 'contactPhone', type: 'text', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'shared', source: 'PersonService', aliasOf: 'phone' },
-  { id: 14, module: 'ticket', name: '位置', key: 'location', type: 'text', defaultValue: '', required: false, status: 'Active', width: 120, classification: 'shared', source: 'MasterDataService', aliasOf: 'location' },
-  { id: 15, module: 'ticket', name: '备注', key: 'remark', type: 'textarea', defaultValue: '', required: false, status: 'Active', classification: 'system', source: 'System', aliasOf: 'remark' },
+  { id: 18, module: 'ticket', name: '工种', key: 'jobTypeIds', type: 'text', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'shared', source: 'MasterDataService', aliasOf: 'jobTypeIds' },
+  { id: 19, module: 'ticket', name: '位置', key: 'location', type: 'text', defaultValue: '', required: false, status: 'Active', width: 150, classification: 'shared', source: 'TicketService' },
 ]
 
 // 设备管理模块的默认字段配置

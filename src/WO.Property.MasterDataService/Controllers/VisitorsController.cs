@@ -3,6 +3,7 @@ using MySqlConnector;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -10,6 +11,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 访客管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/visitors")]
 public class VisitorsController : ControllerBase
 {

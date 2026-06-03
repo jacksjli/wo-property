@@ -21,6 +21,7 @@ public class DispatchRequest
     public int? TicketTypeId { get; set; }
     public int? JobTypeId { get; set; }
     public int? AreaId { get; set; }
+    public int? BuildingId { get; set; }
     public string Priority { get; set; } = "Normal";
 }
 
@@ -53,7 +54,7 @@ public class PropertyDispatcher : IDispatcher
 
     public async Task<DispatchResult> DispatchAsync(DispatchRequest request)
     {
-        Console.WriteLine($"[PropertyDispatcher] DispatchAsync TicketId={request.TicketId}, JobTypeId={request.JobTypeId}, AreaId={request.AreaId}");
+        Console.WriteLine($"[PropertyDispatcher] DispatchAsync TicketId={request.TicketId}, JobTypeId={request.JobTypeId}, AreaId={request.AreaId}, BuildingId={request.BuildingId}");
 
         try
         {
@@ -95,43 +96,112 @@ public class PropertyDispatcher : IDispatcher
                         if (aid.TryGetInt32(out var aidVal)) areaIds.Add(aidVal);
                 }
 
+                // 读取楼栋IDs
+                var buildingIds = new List<int>();
+                if ((item.TryGetProperty("building_ids", out var bEl) || item.TryGetProperty("BuildingIds", out bEl)) && bEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var bid in bEl.EnumerateArray())
+                        if (bid.TryGetInt32(out var bidVal)) buildingIds.Add(bidVal);
+                }
+
                 if (status != "active") continue;
 
+                bool jobTypeMatched = specialtyIds.Contains(request.JobTypeId ?? 0);
                 bool areaMatched = request.AreaId.HasValue && areaIds.Contains(request.AreaId.Value);
+                bool buildingMatched = request.BuildingId.HasValue && buildingIds.Contains(request.BuildingId.Value);
+                bool isSupervisor = role.ToLower() == "supervisor";
 
                 candidates.Add(new PersonCandidate
                 {
                     Id = id,
                     Name = name,
                     Role = role,
-                    IsSupervisor = role == "supervisor" || role == "manager",
+                    JobTypeMatched = jobTypeMatched,
                     AreaMatched = areaMatched,
-                    JobTypeMatched = specialtyIds.Contains(request.JobTypeId ?? 0)
+                    BuildingMatched = buildingMatched,
+                    IsSupervisor = isSupervisor,
+                    PendingCount = 0
                 });
             }
 
-            // 派单优先级：主管优先 > 工种匹配 > 区域匹配
-            var sorted = candidates
-                .OrderByDescending(c => c.IsSupervisor ? 1 : 0)
-                .ThenByDescending(c => c.JobTypeMatched ? 1 : 0)
-                .ThenByDescending(c => c.AreaMatched ? 1 : 0)
-                .ToList();
+            // ========== 三级匹配规则 ==========
+            // 第1级：工种+楼栋匹配
+            var jobAndBuilding = candidates.Where(c => c.JobTypeMatched && c.BuildingMatched).ToList();
+            
+            // 第2级：工种+区域匹配（如果第1级无匹配）
+            var jobAndArea = candidates.Where(c => c.JobTypeMatched && c.AreaMatched).ToList();
+            
+            // 第3级：主管（如果第2级也无匹配）
+            var supervisors = candidates.Where(c => c.IsSupervisor).ToList();
 
-            if (sorted.Count == 0)
+            // 选择候选集：优先第1级 > 第2级 > 第3级
+            List<PersonCandidate> selectedCandidates;
+            string matchLevel;
+            if (jobAndBuilding.Any())
+            {
+                selectedCandidates = jobAndBuilding;
+                matchLevel = "工种+楼栋";
+            }
+            else if (jobAndArea.Any())
+            {
+                selectedCandidates = jobAndArea;
+                matchLevel = "工种+区域";
+            }
+            else if (supervisors.Any())
+            {
+                selectedCandidates = supervisors;
+                matchLevel = "主管";
+            }
+            else
             {
                 Console.WriteLine($"[PropertyDispatcher] No candidates found for TicketId={request.TicketId}");
-                return new DispatchResult { Success = false, Status = "manual", Message = "没有找到可派单的人员" };
+                return new DispatchResult { Success = false, Status = "manual", Message = "没有找到可派单的人员，请手动指派" };
             }
 
+            Console.WriteLine($"[PropertyDispatcher] Match level: {matchLevel}, candidates: {selectedCandidates.Count}");
+
+            // 查询每个人员的待处理工单数
+            try
+            {
+                using var dispatchClient = new HttpClient();
+                dispatchClient.BaseAddress = new Uri("http://localhost:5241");
+                dispatchClient.Timeout = TimeSpan.FromSeconds(5);
+
+                foreach (var c in selectedCandidates)
+                {
+                    try
+                    {
+                        var workloadResponse = await dispatchClient.GetAsync($"/api/tenant/dispatch/workload/{c.Id}");
+                        if (workloadResponse.IsSuccessStatusCode)
+                        {
+                            var workloadJson = await workloadResponse.Content.ReadAsStringAsync();
+                            using var wDoc = System.Text.Json.JsonDocument.Parse(workloadJson);
+                            if (wDoc.RootElement.TryGetProperty("data", out var dataEl) && dataEl.TryGetProperty("pendingCount", out var pcEl))
+                            {
+                                c.PendingCount = pcEl.GetInt32();
+                            }
+                        }
+                    }
+                    catch { /* ignore individual failures */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PropertyDispatcher] Failed to get workload: {ex.Message}");
+            }
+
+            // 按负载排序（待处理工单数最少优先）
+            var sorted = selectedCandidates.OrderBy(c => c.PendingCount).ToList();
             var selected = sorted.First();
-            Console.WriteLine($"[PropertyDispatcher] Selected PersonId={selected.Id}, Role={selected.Role}, JobMatch={selected.JobTypeMatched}, AreaMatch={selected.AreaMatched}");
+
+            Console.WriteLine($"[PropertyDispatcher] Selected PersonId={selected.Id}, Name={selected.Name}, Role={selected.Role}, Match={matchLevel}, Pending={selected.PendingCount}");
 
             return new DispatchResult
             {
                 Success = true,
                 AssignedPersonId = selected.Id,
                 Status = "assigned",
-                Message = $"工单已派给 {selected.Name}（{selected.Role}）"
+                Message = $"工单已派给 {selected.Name}（{selected.Role}）[{matchLevel}]"
             };
         }
         catch (Exception ex)
@@ -147,9 +217,11 @@ public class PersonCandidate
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public string Role { get; set; } = "";
-    public bool IsSupervisor { get; set; }
-    public bool AreaMatched { get; set; }
     public bool JobTypeMatched { get; set; }
+    public bool AreaMatched { get; set; }
+    public bool BuildingMatched { get; set; }
+    public bool IsSupervisor { get; set; }
+    public int PendingCount { get; set; }
 }
 
 // ============ HR 工单派单器 ============
@@ -179,7 +251,6 @@ public class HrDispatcher : IDispatcher
             var dataRoot = doc.RootElement.GetProperty("data");
             var dataElement = dataRoot.TryGetProperty("items", out var ipe) ? ipe : dataRoot;
 
-            // HR 工单匹配：Role 包含 hr/human 或 departmentName 包含 hr/human
             var candidates = new List<HrCandidate>();
 
             foreach (var item in dataElement.EnumerateArray())
@@ -284,8 +355,6 @@ public class FinanceDispatcher : IDispatcher
             var dataRoot = doc.RootElement.GetProperty("data");
             var dataElement = dataRoot.TryGetProperty("items", out var ipe) ? ipe : dataRoot;
 
-            // 财务工单：按金额阈值（Priority 字段）确定审批级别
-            // urgent=<1000, high=1000-10000, medium=10000-50000, low=>50000
             var amountThreshold = request.Priority?.ToLower() switch
             {
                 "urgent" => 1000,
@@ -324,7 +393,6 @@ public class FinanceDispatcher : IDispatcher
                     _ => 6
                 };
 
-                // 金额 > 10000 只允许 manager 处理
                 if (amountThreshold > 10000 && priority > 2)
                     continue;
 

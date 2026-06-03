@@ -13,8 +13,8 @@
 
 | 序号 | 显示名 | 字段名 | 类型 | 分类 | 来源 | 必填 | 说明 |
 |------|--------|--------|------|------|------|------|------|
-| 1 | 工单编号 | ticketCode | text | 私有 | 后端自动生成 | 是 | 格式: REPAIR20260500001 |
-| 2 | 工单标题 | title | text | 私有 | 前端/后端自动 | 是 | 创建时可自动以工单类型名称填充 |
+| 1 | 工单编号 | ticketCode | text | 私有 | 后端自动生成 | 是 | 格式: WO-YYYYMM-NNNNN（如 WO-202605-10001），5位起溢出自扩6位 |
+| 2 | 工单标题 | title | text | 私有 | 后端自动生成 | 是 | 自动生成：`ticketTypeName + jobTypeName`，如"维修强弱电" |
 | 3 | 工单类型 | ticketTypeId | select | 共享 | MasterDataService /api/ticket-types | 是 | 下拉选择，实际存储 TicketType(varchar) |
 | 4 | 优先级 | priority | select | 共享 | 前端 hardcode | 是 | urgent/high/normal/low |
 | 5 | 工单状态 | status | select | 共享 | 后端 | 是 | New/Pending/Dispatched/Accepted... |

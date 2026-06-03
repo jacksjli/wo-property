@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Edit, View } from '@element-plus/icons-vue'
-import { announcementApi } from '@/api/announcement'
+import { getAnnouncementList, createAnnouncement, updateAnnouncement, deleteAnnouncement, publishAnnouncement } from '@/api/announcement'
 import { getServiceUrl } from '@/api/config'
 
 const loading = ref(false)
@@ -11,6 +11,7 @@ const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
 const submitting = ref(false)
+const publishing = ref<number | null>(null)
 
 const form = ref({
   title: '',
@@ -33,10 +34,8 @@ const categories = [
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await announcementApi.getList({ pageSize: 100 })
-    if (res.success !== false) {
-      list.value = res.data || res
-    }
+    const res: any = await getAnnouncementList({ pageSize: 100 })
+    list.value = res.data?.records || res.data || []
   } catch (error) {
     console.error('加载失败:', error)
   }
@@ -68,10 +67,10 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (editingId.value) {
-      await announcementApi.update(editingId.value, form.value)
+      await updateAnnouncement(editingId.value, form.value)
       ElMessage.success('更新成功')
     } else {
-      await announcementApi.create(form.value)
+      await createAnnouncement(form.value)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -85,13 +84,29 @@ const handleSubmit = async () => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除公告「${row.title}」吗？`, '确认删除')
-    await announcementApi.delete(row.id)
+    await deleteAnnouncement(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
     }
+  }
+}
+
+const handlePublish = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定发布公告「${row.title}」吗？`, '确认发布')
+    publishing.value = row.id
+    await publishAnnouncement(row.id)
+    ElMessage.success('发布成功')
+    loadData()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('发布失败')
+    }
+  } finally {
+    publishing.value = null
   }
 }
 
@@ -141,6 +156,7 @@ onMounted(() => {
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="success" @click="handlePublish(row)" :loading="publishing === row.id" v-if="row.status !== 'Published'">发布</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>

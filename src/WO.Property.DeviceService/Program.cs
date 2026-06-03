@@ -4,21 +4,26 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using WO.Property.DeviceService.Tenant;
 using WO.Property.DeviceService.Middleware;
 using WO.Property.DeviceService.Data;
+using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 端口配置
-builder.WebHost.UseUrls("http://0.0.0.0:5530");
+ServiceRunner.ConfigurePort(builder, "DeviceService", 5530);
 
 // 连接字符串配置
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4"
 });
+
+// 添加 HttpClientFactory（用于调用其他服务如 TicketService）
+builder.Services.AddHttpClient();
 
 // 添加服务
 builder.Services.AddEndpointsApiExplorer();
@@ -43,11 +48,10 @@ builder.Services.AddDbContext<DeviceDbContext>(options =>
     options.UseMySql(connectionString, serverVersion);
 });
 
-// JWT 配置
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? "wo-property-jwt-secret-key-min-32-chars!";
-var issuer = jwtSettings["Issuer"] ?? "wo-property-unified-auth";
-var audience = jwtSettings["Audience"] ?? "wo-property-services";
+// JWT 配置 - 使用统一的 JwtHelper
+var secretKey = JwtHelper.GetSecretKey();
+var issuer = JwtHelper.GetIssuer();
+var audience = JwtHelper.GetAudience();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -70,7 +74,13 @@ builder.Services.AddAuthentication(options =>
 });
 
 // 添加控制器服务（支持 TenantDeviceController）
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+    });
 
 builder.Services.AddAuthorization();
 

@@ -33,12 +33,14 @@ public class TenantDbContextFactory : IDbContextFactory<TenantDbContext>
     public TenantDbContext CreateDbContext()
     {
         var tenantCode = _tenantDbFactory.GetCurrentTenantCode();
+        Console.WriteLine($"[TenantDbContextFactory] CreateDbContext called, tenantCode={tenantCode}");
+        _logger.LogDebug("CreateDbContext called, tenantCode={TenantCode}", tenantCode ?? "NULL");
 
+        // 空租户代码时默认使用 wo_property（而非 center_db）
         if (string.IsNullOrEmpty(tenantCode))
         {
-            _logger.LogDebug("No tenant context - using center database");
-            var dbOptions2 = new DbContextOptionsBuilder<TenantDbContext>(_centerOptions).Options;
-            return new TenantDbContext(dbOptions2, _tenantDbFactory, null!);
+            _logger.LogWarning("No tenant context - using default wo_property database");
+            tenantCode = "wo_property";
         }
 
         var tenantConnectionString = _tenantDbFactory.GetTenantConnectionString(tenantCode);

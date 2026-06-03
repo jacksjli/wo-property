@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
 using WO.Property.MasterDataService.DTOs;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -9,6 +10,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 字段定义管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/field-definitions")]
 public class FieldDefinitionsController : ControllerBase
 {
@@ -72,13 +74,13 @@ public class FieldDefinitionsController : ControllerBase
         var whereClause = conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
 
         // Count query
-        var countSql = $"SELECT COUNT(*) FROM FieldDefinitions {whereClause}";
+        var countSql = $"SELECT COUNT(*) FROM field_definitions {whereClause}";
         using var countCmd = new MySqlCommand(countSql, _db);
         foreach (var p in parameters) countCmd.Parameters.Add(p);
         var total = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
 
         // Data query
-        var dataSql = $"SELECT * FROM FieldDefinitions {whereClause} ORDER BY SortOrder, Id LIMIT @offset, @pageSize";
+        var dataSql = $"SELECT * FROM field_definitions {whereClause} ORDER BY SortOrder, Id LIMIT @offset, @pageSize";
         using var dataCmd = new MySqlCommand(dataSql, _db);
         foreach (var p in parameters) dataCmd.Parameters.Add(p);
         dataCmd.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
@@ -111,7 +113,7 @@ public class FieldDefinitionsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)
     {
-        using var cmd = new MySqlCommand("SELECT * FROM FieldDefinitions WHERE Id = @id", _db);
+        using var cmd = new MySqlCommand("SELECT * FROM field_definitions WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         using var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
@@ -128,7 +130,7 @@ public class FieldDefinitionsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateFieldDefinitionRequest request)
     {
         // 检查 FieldKey 是否已存在
-        using (var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM FieldDefinitions WHERE FieldKey = @fieldKey", _db))
+        using (var checkCmd = new MySqlCommand("SELECT COUNT(*) FROM field_definitions WHERE FieldKey = @fieldKey", _db))
         {
             checkCmd.Parameters.AddWithValue("@fieldKey", request.FieldKey);
             var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) > 0;
@@ -141,7 +143,7 @@ public class FieldDefinitionsController : ControllerBase
         if (!validTypes.Contains(request.FieldType))
             return BadRequest(new { Success = false, Message = $"无效的字段类型: {request.FieldType}" });
 
-        var insertSql = @"INSERT INTO FieldDefinitions 
+        var insertSql = @"INSERT INTO field_definitions 
             (FieldKey, DisplayName, FieldType, Source, IsShared, Module, Options, DefaultValue, IsRequired, Width, SortOrder, Status, CreatedAt) 
             VALUES (@FieldKey, @DisplayName, @FieldType, @Source, @IsShared, @Module, @Options, @DefaultValue, @IsRequired, @Width, @SortOrder, 'Active', @CreatedAt);
             SELECT LAST_INSERT_ID();";
@@ -179,7 +181,7 @@ public class FieldDefinitionsController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] UpdateFieldDefinitionRequest request)
     {
         // 检查是否存在
-        using (var checkCmd = new MySqlCommand("SELECT * FROM FieldDefinitions WHERE Id = @id", _db))
+        using (var checkCmd = new MySqlCommand("SELECT * FROM field_definitions WHERE Id = @id", _db))
         {
             checkCmd.Parameters.AddWithValue("@id", id);
             using var reader = await checkCmd.ExecuteReaderAsync();
@@ -262,7 +264,7 @@ public class FieldDefinitionsController : ControllerBase
         updates.Add("UpdatedAt = @updatedAt");
         parameters.Add(new MySqlParameter("@updatedAt", DateTime.UtcNow));
 
-        var sql = $"UPDATE FieldDefinitions SET {string.Join(", ", updates)} WHERE Id = @id";
+        var sql = $"UPDATE field_definitions SET {string.Join(", ", updates)} WHERE Id = @id";
         using var cmd = new MySqlCommand(sql, _db);
         foreach (var p in parameters) cmd.Parameters.Add(p);
         await cmd.ExecuteNonQueryAsync();
@@ -278,7 +280,7 @@ public class FieldDefinitionsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        using var cmd = new MySqlCommand("UPDATE FieldDefinitions SET Status = 'Inactive', UpdatedAt = @updatedAt WHERE Id = @id", _db);
+        using var cmd = new MySqlCommand("UPDATE field_definitions SET Status = 'Inactive', UpdatedAt = @updatedAt WHERE Id = @id", _db);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
         var affected = await cmd.ExecuteNonQueryAsync();
@@ -297,7 +299,7 @@ public class FieldDefinitionsController : ControllerBase
     [HttpGet("all")]
     public async Task<IActionResult> GetAllNoPagination()
     {
-        var sql = "SELECT * FROM FieldDefinitions WHERE Status = 'Active' ORDER BY Module, SortOrder, Id";
+        var sql = "SELECT * FROM field_definitions WHERE Status = 'Active' ORDER BY Module, SortOrder, Id";
         using var cmd = new MySqlCommand(sql, _db);
         var items = new List<FieldDefinitionResponse>();
         using var reader = await cmd.ExecuteReaderAsync();
@@ -315,7 +317,7 @@ public class FieldDefinitionsController : ControllerBase
     [HttpGet("shared")]
     public async Task<IActionResult> GetShared()
     {
-        var sql = "SELECT * FROM FieldDefinitions WHERE IsShared = 1 AND Status = 'Active' ORDER BY SortOrder, Id";
+        var sql = "SELECT * FROM field_definitions WHERE IsShared = 1 AND Status = 'Active' ORDER BY SortOrder, Id";
         using var cmd = new MySqlCommand(sql, _db);
         var items = new List<FieldDefinitionResponse>();
         using var reader = await cmd.ExecuteReaderAsync();
@@ -333,7 +335,7 @@ public class FieldDefinitionsController : ControllerBase
     [HttpGet("by-module/{module}")]
     public async Task<IActionResult> GetByModule(string module)
     {
-        var sql = "SELECT * FROM FieldDefinitions WHERE Status = 'Active' AND (IsShared = 1 OR Module = @module) ORDER BY SortOrder, Id";
+        var sql = "SELECT * FROM field_definitions WHERE Status = 'Active' AND (IsShared = 1 OR Module = @module) ORDER BY SortOrder, Id";
         using var cmd = new MySqlCommand(sql, _db);
         cmd.Parameters.AddWithValue("@module", module);
         var items = new List<FieldDefinitionResponse>();
@@ -392,7 +394,7 @@ public class FieldDefinitionsController : ControllerBase
     {
         var sql = @"SELECT fe.*, fd.DisplayName as CanonicalDisplayName 
                     FROM field_equivalences fe
-                    LEFT JOIN FieldDefinitions fd ON fd.FieldKey = fe.canonical_field AND fd.Module = fe.module
+                    LEFT JOIN field_definitions fd ON fd.FieldKey = fe.canonical_field AND fd.Module = fe.module
                     ORDER BY fe.module, fe.canonical_field";
         using var cmd = new MySqlCommand(sql, _db);
         var items = new List<FieldEquivalenceResponse>();

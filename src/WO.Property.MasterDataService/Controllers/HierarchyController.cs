@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.MasterDataService.Controllers;
 
@@ -7,6 +8,7 @@ namespace WO.Property.MasterDataService.Controllers;
 /// 区域-楼栋-房号三级层级管理API
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/hierarchy")]
 public class HierarchyController : ControllerBase
 {

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Refresh, Bell, Top, Close, View } from '@element-plus/icons-vue'
-import { notificationApi } from '@/api/notification'
+import { getNotifications, createNotification, updateNotification, deleteNotification, markReadNotification } from '@/api/notification'
 
 // 通知类型/级别/状态标签
 const typeLabels: Record<string, string> = {
@@ -70,14 +70,12 @@ const typeOptions = Object.entries(typeLabels).map(([v, l]) => ({ value: v, labe
 const priorityOptions = Object.entries(priorityLabels).map(([v, l]) => ({ value: v, label: l }))
 
 // 加载数据
-const loadData = async () => {
+const loadingData = async () => {
   loading.value = true
   try {
-    const res: any = await notificationApi.get('/api/tenant/notification/notifications', {
-      params: { page: 1, pageSize: 200 }
-    })
+    const res: any = await getNotifications({ page: 1, pageSize: 200 })
     if (res.success) {
-      notifications.value = res.data || []
+      notifications.value = res.data?.records || res.data || []
     } else {
       ElMessage.error(res.message || '加载失败')
     }
@@ -124,14 +122,14 @@ const handleSubmit = async () => {
       priority: form.value.priority
     }
     if (editingId.value) {
-      await notificationApi.put(`/api/tenant/notification/notifications/${editingId.value}`, payload)
+      await updateNotification(editingId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await notificationApi.post('/api/tenant/notification/notifications', payload)
+      await createNotification(payload)
       ElMessage.success('发送成功')
     }
     dialogVisible.value = false
-    await loadData()
+    await loadingData()
   } catch (e: any) {
     ElMessage.error(e.message || '操作失败')
   }
@@ -141,9 +139,9 @@ const handleSubmit = async () => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除通知「${row.title}」吗？`, '删除确认', { type: 'warning' })
-    await notificationApi.delete(`/api/tenant/notification/notifications/${row.id}`)
+    await deleteNotification(row.id)
     ElMessage.success('删除成功')
-    await loadData()
+    await loadingData()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
   }
@@ -152,9 +150,9 @@ const handleDelete = async (row: any) => {
 // 标记已读
 const handleMarkRead = async (row: any) => {
   try {
-    await notificationApi.put(`/api/tenant/notification/notifications/${row.id}/read`, {})
+    await markReadNotification(row.id)
     ElMessage.success('已标记为已读')
-    await loadData()
+    await loadingData()
   } catch (e: any) {
     ElMessage.error(e.message || '操作失败')
   }
@@ -172,7 +170,7 @@ const getTypeLabel = (type: string) => typeLabels[type] || type
 const getPriorityLabel = (priority: string) => priorityLabels[priority] || priority
 
 onMounted(() => {
-  loadData()
+  loadingData()
 })
 </script>
 
@@ -227,7 +225,7 @@ onMounted(() => {
       </div>
       <div class="actions">
         <el-button type="primary" :icon="Plus" @click="handleAdd">发送通知</el-button>
-        <el-button :icon="Refresh" @click="loadData">刷新</el-button>
+        <el-button :icon="Refresh" @click="loadingData">刷新</el-button>
       </div>
     </div>
 

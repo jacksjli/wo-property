@@ -5,7 +5,7 @@ namespace WO.Property.PaymentService.Middleware;
 
 /// <summary>
 /// 租户/项目路由中间件
-/// 优先级：X-Project Header > JWT tenant_code > JWT project_code > 默认租户
+/// 优先级：JWT tenant_code > JWT project_code > X-Project Header > 默认租户
 /// </summary>
 public class TenantRoutingMiddleware
 {
@@ -40,31 +40,31 @@ public class TenantRoutingMiddleware
 
         string? tenantCode = null;
 
-        // 1. 优先从 X-Project Header 获取（单租户多项目架构）
-        var xProject = context.Request.Headers["X-Project"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(xProject))
+        // 1. 优先从 JWT claims 获取 tenant_code（AuthService 已解析为正确的租户代码）
+        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
         {
-            tenantCode = xProject;
-            _logger.LogDebug("Project routing via X-Project: {ProjectCode}", tenantCode);
-        }
+            var token = authHeader.Substring("Bearer ".Length).Trim();
+            tenantCode = ExtractTenantCodeFromJwt(token) ?? ExtractProjectCodeFromJwt(token);
 
-        // 2. 否则从 JWT 获取
-        if (string.IsNullOrEmpty(tenantCode))
-        {
-            var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
-            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+            if (!string.IsNullOrEmpty(tenantCode))
             {
-                var token = authHeader.Substring("Bearer ".Length).Trim();
-                tenantCode = ExtractTenantCodeFromJwt(token) ?? ExtractProjectCodeFromJwt(token);
-
-                if (!string.IsNullOrEmpty(tenantCode))
-                {
-                    _logger.LogDebug("Project routing via JWT: {ProjectCode}", tenantCode);
-                }
+                _logger.LogDebug("Tenant routing via JWT: {TenantCode}", tenantCode);
             }
         }
 
-        // 3. 如果都没有，使用默认租户（兼容旧系统）
+        // 2. 其次从 X-Project Header 获取（仅作为备用）
+        if (string.IsNullOrEmpty(tenantCode))
+        {
+            var xProject = context.Request.Headers["X-Project"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(xProject))
+            {
+                tenantCode = xProject;
+                _logger.LogDebug("Tenant routing via X-Project: {TenantCode}", tenantCode);
+            }
+        }
+
+        // 3. 如果都没有，使用默认租户
         if (string.IsNullOrEmpty(tenantCode))
         {
             tenantCode = "wo_property";

@@ -5,7 +5,8 @@ import { Plus, Delete, Edit, Search, Refresh, Money } from '@element-plus/icons-
 import { getActiveFields, addField, updateField, deleteField, toggleFieldStatus, autoGenerateKey, fieldConfigs, type FieldConfig } from '@/stores/fieldConfig'
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
-import { masterApi } from '@/api/http'
+import { currentProject } from '@/stores/project'
+import { paymentApi, getPayments, getPayment, createPayment, updatePayment, deletePayment, payPayment, getPendingPayments, getPaymentStats } from '@/api/payment'
 
 const { verifyAdminPassword } = usePermission()
 
@@ -89,13 +90,11 @@ const statusOptions = [
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/payment-records', {
-      params: {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize,
-        status: searchForm.value.status || undefined,
-        keyword: searchForm.value.ownerName || undefined
-      }
+    const res: any = await getPayments({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      status: searchForm.value.status || undefined,
+      keyword: searchForm.value.ownerName || undefined,
     })
     if (res.success) {
       tableData.value = res.data || []
@@ -195,12 +194,13 @@ const handleSubmit = async () => {
       PaymentMethod: null,
       TransactionId: null,
       Remarks: form.value.remarks || null,
+      ProjectCode: currentProject.value?.code || '',
     }
     if (editingId.value) {
-      await masterApi.put(`/payment-records/${editingId.value}`, payload)
+      await updatePayment(editingId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/payment-records', payload)
+      await createPayment(payload)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -220,7 +220,7 @@ const handleDelete = async (row: any) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await masterApi.delete(`/payment-records/${row.id}`)
+    await deletePayment(row.id)
     ElMessage.success('删除成功')
     loadData()
   } catch (e: any) {
@@ -232,11 +232,7 @@ const handleDelete = async (row: any) => {
 const handleMarkPaid = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确认住户「${row.residentName}」已付款？`, '确认支付', { type: 'info' })
-    await masterApi.put(`/payment-records/${row.id}`, {
-      status: 'paid',
-      paidDate: new Date().toISOString(),
-      paymentMethod: 'offline'
-    })
+    await payPayment(row.id, 'offline')
     ElMessage.success('已标记为已支付')
     loadData()
   } catch (e: any) {

@@ -1,6 +1,7 @@
 import { createHttpClient } from './http'
 
-const BASE_URL = 'http://localhost:5512'
+import { getServiceUrl } from './config'
+const BASE_URL = getServiceUrl('key')
 const keyApi = createHttpClient(BASE_URL)
 
 export interface KeyRecord {

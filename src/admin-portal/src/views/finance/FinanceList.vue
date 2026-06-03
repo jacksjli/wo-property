@@ -236,7 +236,8 @@ import { Plus, Edit, Delete, Refresh, Setting, Money, ArrowDown, ArrowUp } from 
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { currentProject } from '@/stores/project'
+import { getTransactions, createTransaction, updateTransaction, deleteTransaction } from '@/api/finance'
 
 const { verifyAdminPassword } = usePermission()
 const fieldDialogRef = ref<InstanceType<typeof FieldConfigDialog>>()
@@ -301,8 +302,8 @@ const loadData = async () => {
     const params: any = { page: 1, pageSize: 100 }
     if (filterType.value) params.type = filterType.value
     if (filterCategory.value) params.category = filterCategory.value
-    const res: any = await masterApi.get('/finance-records', { params })
-    transactionList.value = res.data || []
+    const res: any = await getTransactions(params)
+    transactionList.value = res?.data?.records || res?.data || []
   } catch (e: any) {
     console.error('Finance loadData error:', e)
     ElMessage.error('加载失败: ' + (e?.message || e?.response?.data?.message || '未知错误'))
@@ -458,13 +459,14 @@ const handleSubmit = async () => {
     ReceiptNo: form.value.receiptNo,
     Status: form.value.status,
     Remarks: form.value.remark,
+    ProjectCode: currentProject.value?.code || '',
   }
   try {
     if (editingId.value) {
-      await masterApi.put(`/finance-records/${editingId.value}`, payload)
+      await updateTransaction(editingId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await masterApi.post('/finance-records', payload)
+      await createTransaction(payload)
       ElMessage.success('添加成功')
     }
     await loadData()
@@ -477,7 +479,7 @@ const handleSubmit = async () => {
 const handleDelete = async (row: any) => {
   try {
     await ElMessageBox.confirm(`确定删除记录 ${row.recordNumber} 吗？`, '提示', { type: 'warning' })
-    await masterApi.delete(`/finance-records/${row.id}`)
+    await deleteTransaction(row.id)
     ElMessage.success('删除成功')
     await loadData()
   } catch (e: any) {

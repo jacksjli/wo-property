@@ -177,6 +177,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '工单类型' }
   },
   {
+    path: '/dispatch-list',
+    name: 'DispatchList',
+    component: safeImport('../views/dispatch/DispatchList.vue'),
+    meta: { title: '派单管理' }
+  },
+  {
     path: '/dispatch-rules',
     name: 'DispatchRules',
     component: safeImport('../views/dispatch/DispatchRules.vue'),

@@ -1,38 +1,30 @@
 import { createHttpClient } from './http'
 
-const BASE_URL = 'http://localhost:5026'  // StatisticsService 端口
+// StatisticsService 端口 5250，路径 /api/tenant/statistics
+import { getServiceUrl } from './config'
+const BASE_URL = getServiceUrl('statistics')
 const statisticsApi = createHttpClient(BASE_URL)
 
-export interface TicketStatistics {
-  total: number
-  byStatus: Record<string, number>
-  byPriority: Record<string, number>
-  byType: Record<string, number>
-  byArea: Record<string, number>
-}
-
-export interface DashboardMetric {
-  id: number
-  metricName: string
-  metricValue: number
-  metricUnit?: string
-  recordedAt: string
-}
-
+// 支持的 API
 export const statisticsApi = {
-  // 工单统计
-  getTicketStats: (params?: any) => statisticsApi.get('/api/tenant/statistics/tickets', { params }),
-  
-  // 仪表盘指标
-  getDashboardMetrics: () => statisticsApi.get('/api/tenant/statistics/dashboard'),
-  
-  // 趋势数据
-  getTrendData: (type: string, startDate: string, endDate: string) =>
-    statisticsApi.get('/api/tenant/statistics/trends', { params: { type, startDate, endDate } }),
-  
-  // 导出报表
-  exportReport: (type: string, format: string) =>
-    statisticsApi.get('/api/tenant/statistics/export', { params: { type, format } }),
+  // GET /api/tenant/statistics/overview - 运营概览
+  getOverview: () => statisticsApi.get('/api/tenant/statistics/overview'),
+
+  // GET /api/tenant/statistics/tickets - 工单统计
+  getTickets: (params?: { startDate?: string; endDate?: string; projectId?: number }) =>
+    statisticsApi.get('/api/tenant/statistics/tickets', { params }),
+
+  // GET /api/tenant/statistics/engineers - 工程师统计
+  getEngineers: (params?: { startDate?: string; endDate?: string }) =>
+    statisticsApi.get('/api/tenant/statistics/engineers', { params }),
+
+  // GET /api/tenant/statistics/projects - 项目统计
+  getProjects: (params?: { startDate?: string; endDate?: string }) =>
+    statisticsApi.get('/api/tenant/statistics/projects', { params }),
+
+  // GET /api/tenant/statistics/trends?days=30 - 趋势数据
+  getTrends: (days = 30) =>
+    statisticsApi.get('/api/tenant/statistics/trends', { params: { days } }),
 }
 
 export default statisticsApi

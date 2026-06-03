@@ -1,0 +1,26 @@
+{
+  "name": "物业派工",
+  "appid": "__UNI__woa_property",
+  "description": "物业派工小程序",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "app-plus": {
+    "usingComponents": true,
+    "splashscreen": {
+      "alwaysShowBeforeRender": true
+    }
+  },
+  "h5": {
+    "router": {
+      "mode": "hash"
+    }
+  },
+  "mp-weixin": {
+    "appid": "wx122aeb8c033c6a67",
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  }
+}

@@ -13,8 +13,14 @@ using WO.Property.Shared.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 配置端口
-builder.WebHost.UseUrls("http://0.0.0.0:5501");
+ServiceRunner.ConfigurePort(builder, "ContractService", 5501);
+
+// 添加连接字符串配置（供 TenantDbFactory 使用）
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["ConnectionStrings:Default"] = "Server=127.0.0.1;Port=3306;Database=wo_property;User=root;Password=;CharSet=utf8mb4",
+    ["ConnectionStrings:CenterDb"] = "Server=127.0.0.1;Port=3306;Database=center_db;User=root;Password=;CharSet=utf8mb4"
+});
 
 // 添加数据库
 builder.Services.AddDbContext<ContractDbContext>(options =>

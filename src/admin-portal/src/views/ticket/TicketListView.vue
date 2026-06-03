@@ -118,15 +118,21 @@
           </template>
         </el-table-column>
 
+        <el-table-column prop="jobTypeName" label="工种" width="100">
+          <template #default="{ row }">
+            <span>{{ row.jobTypeName || '-' }}</span>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="categoryName" label="分类" width="100">
           <template #default="{ row }">
             <span>{{ row.categoryName || row.category || '未分类' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="creatorName" label="创建人" width="100">
+        <el-table-column prop="location" label="位置" width="150">
           <template #default="{ row }">
-            <span>{{ row.creatorName || `用户${row.createdBy}` }}</span>
+            <span>{{ row.location || '-' }}</span>
           </template>
         </el-table-column>
 
@@ -142,24 +148,13 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
-              <el-button
-                type="text"
-                size="small"
-                @click.stop="handleView(row)"
-              >
-                查看
-              </el-button>
-              <el-button
-                v-if="authStore.isAdmin || authStore.isTechnician"
-                type="text"
-                size="small"
-                @click.stop="handleEdit(row)"
-              >
-                编辑
-              </el-button>
+              <el-button type="text" size="small" @click.stop="handleView(row)">详情</el-button>
+              <el-button type="text" size="small" type="primary" @click.stop="handleAssign(row)">指派</el-button>
+              <el-button type="text" size="small" type="success" @click.stop="handleProcess(row)">处理</el-button>
+              <el-button type="text" size="small" type="danger" @click.stop="handleDelete(row)">删除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -268,15 +263,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { Plus, Refresh, Search } from '@element-plus/icons-vue';
 import { useAuthStore } from '@/stores/auth';
 import { useTicketStore } from '@/stores/ticket';
+import { currentProject } from '@/stores/project';
 import { ticketTypeStore } from '@/stores/ticketType';
 import type { Ticket, TicketOptions } from '@/stores/ticket';
 import { useFieldConfig } from '@/composables/useFieldConfig';
+import { initWebSocket, useWebSocket } from '@/stores/websocket';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -311,7 +308,8 @@ const createForm = ref({
   category: '',
   priority: 'Medium',
   contactPhone: '',
-  address: ''
+  address: '',
+  projectId: currentProject.value?.id || 0
 });
 
 // 表单验证规则
@@ -429,6 +427,79 @@ const handleEdit = (row: any) => {
   router.push(`/tickets/${row.id}?edit=true`);
 };
 
+// 指派工单
+const handleAssign = async (row: any) => {
+  try {
+    const { data: persons } = await api.get('/persons?role=technician&pageSize=100')
+    const options = persons.map((p: any) => ({ label: p.name || p.nickName, value: p.id }))
+    
+    const selected = await ElMessageBox.prompt('选择指派工程师', `指派工单: ${row.ticketCode}`, {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputType: 'select'
+    })
+    
+    // 调用指派 API
+    const res = await api.put(`/tenant/tickets/${row.id}`, {
+      assigneeId: parseInt(selected),
+      dispatchStatus: 'Dispatched'
+    })
+    if (res.success) {
+      ElMessage.success('指派成功')
+      refreshTickets()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('指派失败')
+  }
+};
+
+// 处理工单
+const handleProcess = async (row: any) => {
+  try {
+    const statusOptions = [
+      { label: '待处理', value: 'Pending' },
+      { label: '处理中', value: 'Processing' },
+      { label: '已完成', value: 'Completed' },
+      { label: '已关闭', value: 'Closed' }
+    ]
+    
+    const selected = await ElMessageBox.prompt('更新工单状态', `工单: ${row.ticketCode}`, {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputType: 'select'
+    })
+    
+    const res = await api.put(`/tenant/tickets/${row.id}`, {
+      status: selected
+    })
+    if (res.success) {
+      ElMessage.success('状态更新成功')
+      refreshTickets()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('更新失败')
+  }
+};
+
+// 删除工单
+const handleDelete = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除工单「${row.ticketCode}」吗？删除后将无法恢复。`,
+      '删除确认',
+      { type: 'warning' }
+    )
+    
+    const res = await api.delete(`/tenant/tickets/${row.id}`)
+    if (res.success) {
+      ElMessage.success('删除成功')
+      refreshTickets()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('删除失败')
+  }
+};
+
 // 刷新工单
 const refreshTickets = async () => {
   await ticketStore.fetchTickets({
@@ -484,6 +555,19 @@ onMounted(async () => {
   // 加载字段配置（alias 优先的 label）
   const config = await fetchFieldConfig('ticket');
   if (config) ticketLabels.value = config;
+
+  // 监听工单状态变更事件，自动刷新列表
+  initWebSocket();
+  const { on } = useWebSocket();
+  const handleTicketUpdated = () => {
+    refreshTickets();
+  };
+  on('ticket:status_changed', handleTicketUpdated);
+
+  // 组件卸载时移除监听
+  onUnmounted(() => {
+    off('ticket:status_changed', handleTicketUpdated);
+  });
 });
 </script>
 

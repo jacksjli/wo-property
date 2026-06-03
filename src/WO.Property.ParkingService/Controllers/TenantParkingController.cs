@@ -2,13 +2,28 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WO.Property.ParkingService.Data;
 using WO.Property.ParkingService.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace WO.Property.ParkingService.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/tenant/parking")]
 public class TenantParkingController : ControllerBase
 {
+    // 获取当前项目代码（从 X-Project header）
+    private string? GetProjectCode()
+    {
+        if (Request.Headers.TryGetValue("X-Project", out var projectValues))
+        {
+            var projectCode = projectValues.FirstOrDefault();
+            if (!string.IsNullOrEmpty(projectCode))
+                return projectCode;
+        }
+        return null;
+    }
+
+
     private readonly IDbContextFactory<TenantDbContext> _dbFactory;
     private readonly ILogger<TenantParkingController> _logger;
 

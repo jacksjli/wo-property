@@ -5,7 +5,8 @@ import { Plus, Edit, Delete, Refresh, Search, Van, Check, Close } from '@element
 import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { getActiveFields, type FieldConfig } from '@/stores/fieldConfig'
-import { masterApi } from '@/api/http'
+import { currentProject } from '@/stores/project'
+import { getParkings, createParking, updateParking, deleteParking } from '@/api/parking'
 
 // 权限验证
 const { verifyAdminPassword } = usePermission()
@@ -127,15 +128,22 @@ const filteredList = computed(() => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res: any = await masterApi.get('/parking-records', {
-      params: {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize
-      }
+    const res: any = await getParkings({
+      page: pagination.value.page,
+      pageSize: pagination.value.pageSize,
+      keyword: searchForm.value.spaceNumber || undefined,
+      status: searchForm.value.status || undefined,
+      spaceType: searchForm.value.type || undefined,
     })
     if (res.success) {
       tableData.value = res.data || []
-      pagination.value = res.pagination || pagination.value
+      pagination.value = {
+        page: res.pagination?.page || 1,
+        pageSize: res.pagination?.pageSize || 20,
+        total: res.pagination?.total || 0,
+        totalPages: res.pagination?.totalPages || 0,
+        totalCount: res.pagination?.total || 0
+      }
     }
   } catch (e: any) {
     ElMessage.error(e.message || '加载失败')
@@ -194,22 +202,22 @@ const handleSave = async () => {
   submitting.value = true
   try {
     const payload = {
-      ParkingSpaceNumber: formData.value.parkingSpaceNumber,
-      BuildingId: formData.value.buildingId,
-      Floor: formData.value.floor,
-      SpaceType: formData.value.spaceType,
-      LicensePlate: formData.value.licensePlate || null,
-      ResidentId: formData.value.residentId,
-      StartDate: formData.value.startDate || null,
-      EndDate: formData.value.endDate || null,
-      MonthlyFee: formData.value.monthlyFee,
-      Status: formData.value.status,
+      parkingSpaceNumber: formData.value.parkingSpaceNumber,
+      buildingId: formData.value.buildingId,
+      floor: formData.value.floor,
+      spaceType: formData.value.spaceType,
+      licensePlate: formData.value.licensePlate || null,
+      residentId: formData.value.residentId,
+      startDate: formData.value.startDate || null,
+      endDate: formData.value.endDate || null,
+      monthlyFee: formData.value.monthlyFee,
+      status: formData.value.status,
     }
     if (editingSpace.value) {
-      await masterApi.put(`/parking-records/${editingSpace.value.id}`, payload)
+      await updateParking(editingSpace.value.id, payload)
       ElMessage.success('车位信息更新成功')
     } else {
-      await masterApi.post('/parking-records', payload)
+      await createParking(payload)
       ElMessage.success('车位新增成功')
     }
     dialogVisible.value = false
@@ -229,7 +237,7 @@ const handleDelete = async (row: any) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await masterApi.delete(`/parking-records/${row.id}`)
+    await deleteParking(row.id)
     ElMessage.success('车位已删除')
     loadData()
   } catch (e: any) {

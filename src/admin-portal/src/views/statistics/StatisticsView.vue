@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { statisticsApi } from '../../api/http'
+import { statisticsApi } from '../../api/statistics'
 import { ElMessage } from 'element-plus'
 import { TrendCharts, DataAnalysis, List } from '@element-plus/icons-vue'
 
@@ -10,62 +10,74 @@ const statsData = ref<any>(null)
 const loadStatistics = async () => {
   loading.value = true
   try {
-    const response = await statisticsApi.get('/api/metrics/indicators')
-    if (response && response.operation) {
-      // 后端返回的嵌套结构
+    // 并行请求所有统计数据
+    const [overview, tickets, engineers, projects, trends] = await Promise.all([
+      statisticsApi.getOverview().catch(() => null),
+      statisticsApi.getTickets().catch(() => null),
+      statisticsApi.getEngineers().catch(() => null),
+      statisticsApi.getProjects().catch(() => null),
+      statisticsApi.getTrends(30).catch(() => null),
+    ])
+
+    // 优先使用 overview，否则用各模块数据拼装
+    if (overview) {
       statsData.value = {
-        totalTickets: response.customer?.tickets || 0,
-        resolvedTickets: response.customer?.completedTickets || 0,
-        openTickets: (response.customer?.tickets || 0) - (response.customer?.completedTickets || 0),
-        totalProperties: response.operation?.totalProperties || 0,
-        totalUnits: response.operation?.totalUnits || 0,
-        occupancyRate: response.operation?.occupancyRate || 0,
-        totalRevenue: response.financial?.totalRevenue || 0,
-        propertyFeeRevenue: response.financial?.propertyFeeRevenue || 0,
-        collectionRate: response.financial?.collectionRate || 0,
-        totalExpense: response.financial?.totalExpense || 0,
-        totalComplaints: response.customer?.complaints || 0,
-        resolvedComplaints: response.customer?.resolvedComplaints || 0,
-        complaintResolveRate: response.customer?.complaintResolveRate || 0,
-        totalInspections: response.inspection?.totalInspections || 0,
-        passedInspections: response.inspection?.passedInspections || 0,
-        issuesFound: response.inspection?.issuesFound || 0,
-        issuesResolved: response.inspection?.resolvedIssues || 0,
-        totalVisitors: response.visitor?.totalVisitors || 0,
-        activeVisitors: response.visitor?.activeVisitors || 0,
+        totalTickets: overview.totalTickets || 0,
+        resolvedTickets: overview.resolvedTickets || 0,
+        openTickets: overview.openTickets || 0,
+        totalProperties: overview.totalProperties || 0,
+        totalUnits: overview.totalUnits || 0,
+        occupancyRate: overview.occupancyRate || 0,
+        totalRevenue: overview.totalRevenue || 0,
+        propertyFeeRevenue: overview.propertyFeeRevenue || 0,
+        collectionRate: overview.collectionRate || 0,
+        totalExpense: overview.totalExpense || 0,
+        totalComplaints: overview.totalComplaints || 0,
+        resolvedComplaints: overview.resolvedComplaints || 0,
+        complaintResolveRate: overview.complaintResolveRate || 0,
+        totalInspections: overview.totalInspections || 0,
+        passedInspections: overview.passedInspections || 0,
+        issuesFound: overview.issuesFound || 0,
+        issuesResolved: overview.issuesResolved || 0,
+        totalVisitors: overview.totalVisitors || 0,
+        activeVisitors: overview.activeVisitors || 0,
       }
     } else {
-      statsData.value = getMockData()
+      statsData.value = {
+        totalTickets: tickets?.total || 0,
+        resolvedTickets: tickets?.resolved || 0,
+        openTickets: (tickets?.total || 0) - (tickets?.resolved || 0),
+        totalProperties: projects?.total || 0,
+        totalUnits: projects?.totalUnits || 0,
+        occupancyRate: projects?.occupancyRate || 0,
+        totalRevenue: 0,
+        propertyFeeRevenue: 0,
+        collectionRate: 0,
+        totalExpense: 0,
+        totalComplaints: 0,
+        resolvedComplaints: 0,
+        complaintResolveRate: 0,
+        totalInspections: 0,
+        passedInspections: 0,
+        issuesFound: 0,
+        issuesResolved: 0,
+        totalVisitors: 0,
+        activeVisitors: 0,
+      }
     }
   } catch (error) {
     console.error('加载统计数据失败:', error)
-    statsData.value = getMockData()
+    ElMessage.error('统计数据加载失败')
+    statsData.value = {
+      totalTickets: 0, resolvedTickets: 0, openTickets: 0,
+      totalProperties: 0, totalUnits: 0, occupancyRate: 0,
+      totalRevenue: 0, propertyFeeRevenue: 0, collectionRate: 0, totalExpense: 0,
+      totalComplaints: 0, resolvedComplaints: 0, complaintResolveRate: 0,
+      totalInspections: 0, passedInspections: 0, issuesFound: 0, issuesResolved: 0,
+      totalVisitors: 0, activeVisitors: 0
+    }
   }
   loading.value = false
-}
-
-const getMockData = () => {
-  return {
-    totalTickets: 156,
-    openTickets: 23,
-    resolvedTickets: 133,
-    totalProperties: 5,
-    totalUnits: 1200,
-    occupancyRate: 87.5,
-    totalRevenue: 125800,
-    propertyFeeRevenue: 98000,
-    collectionRate: 92.3,
-    totalExpense: 89200,
-    totalComplaints: 12,
-    resolvedComplaints: 10,
-    complaintResolveRate: 83.3,
-    totalInspections: 45,
-    passedInspections: 42,
-    issuesFound: 18,
-    issuesResolved: 15,
-    totalVisitors: 89,
-    activeVisitors: 12
-  }
 }
 
 const formatMoney = (amount: number) => {

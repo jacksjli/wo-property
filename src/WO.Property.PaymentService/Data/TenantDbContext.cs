@@ -49,6 +49,7 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
         });
 
         modelBuilder.Entity<MeterReading>(entity =>
@@ -71,6 +72,7 @@ public class TenantDbContext : DbContext
             entity.Ignore(e => e.UpdatedBy);
             entity.Ignore(e => e.UpdatedAt);
             entity.Ignore(e => e.IsDeleted);
+            entity.Property(e => e.ProjectCode).HasColumnName("project_code");
         });
     }
 }

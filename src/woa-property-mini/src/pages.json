@@ -1,0 +1,106 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录"
+      }
+    },
+    {
+      "path": "pages/owner/index",
+      "style": {
+        "navigationBarTitleText": "我的报修"
+      }
+    },
+    {
+      "path": "pages/owner/create",
+      "style": {
+        "navigationBarTitleText": "新建报修"
+      }
+    },
+    {
+      "path": "pages/owner/detail",
+      "style": {
+        "navigationBarTitleText": "工单详情"
+      }
+    },
+    {
+      "path": "pages/owner/rate",
+      "style": {
+        "navigationBarTitleText": "完工评价"
+      }
+    },
+    {
+      "path": "pages/ticket/list",
+      "style": {
+        "navigationBarTitleText": "工程师工单"
+      }
+    },
+    {
+      "path": "pages/ticket/detail",
+      "style": {
+        "navigationBarTitleText": "工单详情"
+      }
+    },
+    {
+      "path": "pages/ticket/rate",
+      "style": {
+        "navigationBarTitleText": "完工/评价"
+      }
+    },
+    {
+      "path": "pages/operator/alerts",
+      "style": {
+        "navigationBarTitleText": "超时告警"
+      }
+    },
+    {
+      "path": "pages/ticket/transfer",
+      "style": {
+        "navigationBarTitleText": "转单申请"
+      }
+    },
+    {
+      "path": "pages/admin/dashboard",
+      "style": {
+        "navigationBarTitleText": "运营看板"
+      }
+    },
+    {
+      "path": "pages/admin/tickets",
+      "style": {
+        "navigationBarTitleText": "工单管理"
+      }
+    },
+    {
+      "path": "pages/admin/dispatch",
+      "style": {
+        "navigationBarTitleText": "工单派单"
+      }
+    },
+    {
+      "path": "pages/admin/ticket-detail",
+      "style": {
+        "navigationBarTitleText": "工单详情"
+      }
+    },
+    {
+      "path": "pages/admin/alerts",
+      "style": {
+        "navigationBarTitleText": "超时告警"
+      }
+    },
+    {
+      "path": "pages/mine/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "物业报修",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#f5f5f5"
+  }
+}

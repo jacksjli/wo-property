@@ -14,6 +14,10 @@ public class ParkingLot : BaseEntity
     public decimal HourlyRate { get; set; } = 5m;
     public decimal MonthlyRate { get; set; } = 300m;
     public int ProjectId { get; set; } = 1;
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+    
     public ICollection<ParkingSpace> Spaces { get; set; } = new List<ParkingSpace>();
     [JsonIgnore] public ICollection<ParkingRecord> Records { get; set; } = new List<ParkingRecord>();
 }
@@ -25,6 +29,10 @@ public class ParkingSpace : BaseEntity
     [MaxLength(20)] public string Status { get; set; } = "available";
     public int LotId { get; set; }
     public int? VehicleId { get; set; }
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+    
     [ForeignKey(nameof(LotId))] public ParkingLot? Lot { get; set; }
     [ForeignKey(nameof(VehicleId))] public Vehicle? Vehicle { get; set; }
 }
@@ -39,12 +47,16 @@ public class Vehicle : BaseEntity
     [MaxLength(20)] public string Type { get; set; } = "personal";
     [MaxLength(500)] public string? PlateImage { get; set; }
     public int ProjectId { get; set; } = 1;
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
 }
 
 public class ParkingRecord : BaseEntity
 {
     [Required, MaxLength(20)] public string PlateNumber { get; set; } = string.Empty;
     public int LotId { get; set; }
+    public int? SpaceId { get; set; }
     public DateTime EntryTime { get; set; }
     public DateTime? ExitTime { get; set; }
     [MaxLength(20)] public string Status { get; set; } = "open";
@@ -56,6 +68,10 @@ public class ParkingRecord : BaseEntity
     [MaxLength(20)] public string? PaymentMethod { get; set; }
     [MaxLength(200)] public string? Remark { get; set; }
     public int ProjectId { get; set; } = 1;
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+    
     [ForeignKey(nameof(LotId))] [JsonIgnore] public ParkingLot? Lot { get; set; }
 }
 
@@ -68,4 +84,9 @@ public class ParkingPayment : BaseEntity
     [MaxLength(20)] public string Method { get; set; } = "wechat";
     public int ProjectId { get; set; } = 1;
     public DateTime PaidAt { get; set; } = DateTime.UtcNow;
+
+    
+    [MaxLength(20)]
+    public string? ProjectCode { get; set; }
+
 }
