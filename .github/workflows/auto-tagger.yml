@@ -1,0 +1,39 @@
+name: 🔖 Auto Version Tagger
+
+on:
+  push:
+    branches: [feature/multi-tenant]
+  workflow_dispatch:
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 自动打 tag 并推送
+        run: |
+          # 获取当前最新 tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          echo "上一个版本: $LAST_TAG"
+
+          # 解析版本号并 +1 patch
+          LAST_MAJOR=$(echo $LAST_TAG | sed 's/v//' | cut -d. -f1)
+          LAST_MINOR=$(echo $LAST_TAG | sed 's/v//' | cut -d. -f2)
+          LAST_PATCH=$(echo $LAST_TAG | sed 's/v//' | cut -d. -f3)
+
+          # patch +1
+          NEW_PATCH=$((LAST_PATCH + 1))
+          NEW_TAG="v${LAST_MAJOR}.${LAST_MINOR}.${NEW_PATCH}"
+
+          echo "新版本: $NEW_TAG"
+
+          # 创建 tag 并推送
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git tag -a $NEW_TAG -m "自动版本: $NEW_TAG ($(date '+%Y-%m-%d'))"
+          git push origin $NEW_TAG
+
+          echo "✅ 版本 $NEW_TAG 已推送"
