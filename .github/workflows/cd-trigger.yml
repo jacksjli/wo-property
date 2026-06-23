@@ -52,31 +52,18 @@ jobs:
           echo "  时间:     ${{ github.event.created_at }}"
           echo "=========================================="
 
-      # ── 发送到审批群 ──────────────────────────────────
-      - name: 📣 Send release request to DingTalk
-        if: env.DINGTALK_WEBHOOK != ''
-        uses: actions-cool/discord-webhook@v1
-        with:
-          webhook-url: ${{ secrets.DINGTALK_WEBHOOK }}
-          message: |
-            🔔 **WO-Property 发布申请单**
-            ---
-            📦 **版本:** `${{ steps.version.outputs.version }}`
-            🌍 **环境:** `${{ github.event.inputs.environment }}`
-            👤 **申请人:** @${{ github.actor }}
-            📝 **原因:** ${{ github.event.inputs.reason || '(未填写)' }}
-            ⏰ **时间:** ${{ github.event.created_at }}
-            ---
-            ⚠️ 请确认后，在 GitHub Actions 页面手动触发 `CD - Production Deploy` workflow。
-
-      # ── 等待审批（人工确认） ──────────────────────────
-      # 说明：通过 environment: prod 的 GitHub Environment Protection Rules 实现
-      # 设置 required_reviewers 后，workflow_dispatch 会自动等待审批
-      - name: Wait for approval
+      # ── 打印部署说明 ──────────────────────────────────
+      - name: 📋 Deployment instructions
         run: |
-          echo "⏳ 等待审批中..."
-          echo "请在 GitHub → Settings → Environments → prod 中配置审批人员"
-          echo "或者联系 DevOps 负责人批准此次发布"
+          echo "=========================================="
+          echo "  CD 审批通过"
+          echo "=========================================="
+          echo "下一步："
+          echo "  1. 如果 deploy.yml 的 SSH secrets 未配置，请先在 GitHub → Settings → Secrets 配置："
+          echo "     - PROD_SERVER_HOST"
+          echo "     - PROD_SERVER_USER"
+          echo "     - PROD_SERVER_SSH_KEY"
+          echo "  2. 然后在 Actions 页面手动 trigger deploy.yml"
 
   # =========================================================
   # Job 2: 触发实际部署 workflow
@@ -100,15 +87,9 @@ jobs:
               workflow_id: 'deploy.yml',
               ref: 'main',
               inputs: {
-                environment: {
-                  value: '${{ github.event.inputs.environment }}',
-                },
-                version: {
-                  value: '${{ needs.create-release-request.outputs.version }}',
-                },
-                service: {
-                  value: 'all',
-                }
+                environment: '${{ github.event.inputs.environment }}',
+                version: '${{ needs.create-release-request.outputs.version }}',
+                service: 'all'
               }
             });
             console.log('✅ Deploy workflow triggered:', response.status);
