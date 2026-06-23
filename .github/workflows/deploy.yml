@@ -81,12 +81,11 @@ jobs:
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           port: ${{ secrets.PROD_SERVER_PORT }}
           envs: DEPLOY_VERSION,REGISTRY,IMAGE_PREFIX
-          environment:
-            DEPLOY_VERSION: ${{ steps.version.outputs.version }}
-            REGISTRY: ${{ env.REGISTRY }}
-            IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
           script: |
             set -e
+            DEPLOY_VERSION="${{ steps.version.outputs.version }}"
+            REGISTRY="${{ env.REGISTRY }}"
+            IMAGE_PREFIX="${{ env.IMAGE_PREFIX }}"
             echo "📦 部署版本: $DEPLOY_VERSION"
 
             # 写入 docker-compose override
