@@ -61,11 +61,11 @@ export interface ImportBuildingsResult {
 export const masterDataApi = {
   /** 批量导入人员（PersonService） */
   importPersons: (data: { rows: any[] }) =>
-    masterApi.post('/api/persons/import', data),
+    masterApi.post('/persons/import', data),
 
   /** 下载人员导入模板 */
   downloadPersonTemplate: () =>
-    masterApi.get('/api/persons/import/template', { responseType: 'blob' }),
+    masterApi.get('/persons/import/template', { responseType: 'blob' }),
 
   /** 批量导入工单类型 */
   importJobTypes: (data: { rows: any[] }) =>
@@ -101,7 +101,7 @@ export const masterDataApi = {
 
   /** 更新字段定义 */
   updateFieldDefinition: (id: number, data: Partial<FieldDefinition>) =>
-    masterApi.put<FieldDefinition>(`/api/field-definitions/${id}`, data),
+    masterApi.put<FieldDefinition>(`/field-definitions/${id}`, data),
 
   /** 为模块添加字段 */
   addModuleField: (module: string, fieldDefinitionId: number) =>
@@ -109,27 +109,27 @@ export const masterDataApi = {
 
   /** 从模块移除字段 */
   removeModuleField: (id: number) =>
-    masterApi.delete(`/api/module-fields/${id}`),
+    masterApi.delete(`/module-fields/${id}`),
 
   /** 更新模块字段（如排序、宽度、状态） */
   updateModuleField: (id: number, updates: Partial<ModuleField>) =>
-    masterApi.put(`/api/module-fields/${id}`, updates),
+    masterApi.put(`/module-fields/${id}`, updates),
 
   /** 获取字段等价组关系 */
   getFieldEquivalentGroups: () =>
-    masterApi.get<ApiResponse<Record<string, string[]>>>(`/api/field-definition-equivalents`),
+    masterApi.get<ApiResponse<Record<string, string[]>>>(`/field-definition-equivalents`),
 
   /** 获取所有字段等价映射 */
   getFieldEquivalences: () =>
-    masterApi.get<ApiResponse<FieldEquivalentGroup[]>>('/api/field-equivalences'),
+    masterApi.get<ApiResponse<FieldEquivalentGroup[]>>('/field-equivalences'),
 
   /** 解析字段名为标准名（支持等价映射） */
   resolveFields: (fields: string[]) =>
-    masterApi.post<ApiResponse<Record<string, string>>>('/api/field-equivalences/resolve', { fields }),
+    masterApi.post<ApiResponse<Record<string, string>>>('/field-equivalences/resolve', { fields }),
 
   /** 批量导入房号 */
   importRooms: (data: { rows: any[] }) =>
-    masterApi.post<ApiResponse<{ success: number; failed: number; skipped: number; errors: string[] }>>('/api/rooms/import', data),
+    masterApi.post<ApiResponse<{ success: number; failed: number; skipped: number; errors: string[] }>>('/rooms/import', data),
 
 
   /** 批量导入区域 */

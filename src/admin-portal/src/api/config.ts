@@ -1,46 +1,62 @@
 // API 基础配置
-// 手机/外部访问时使用代理路径（通过 Vite server.proxy 转发到后端）
-// Vite 开发服务器配置在 vite.config.ts 中将 /api 路径代理到后端服务
-const API_BASE_URL = ''  // 空字符串 = 使用同源（经过 Vite 代理）
+// 部署环境：http://139.196.195.93（走 nginx 统一入口）
+const API_BASE_URL = 'http://139.196.195.93'
 
-// 如果需要直接访问后端（不推荐），取消下面这行注释并填入服务器IP
-// const API_BASE_URL = 'http://192.168.1.3'
-
-// 服务端口配置（Phase 1 + Phase 2 改造后的端口）
-export const SERVICES = {
-  auth: 5106,           // AuthService (Phase 0)
-  center: 5016,          // CenterService (项目中心)
-  masterData: 5019,     // MasterDataService (Phase 0)
-  person: 5018,          // PersonService (Phase 0)
-  ticket: 5102,          // TicketService (Phase 0)
-  ticketType: 5102,     // TicketService (工单类型API)
-  announcement: 5511,
-  delivery: 5017,     // AnnouncementService (Phase 1)
-  cleaning: 5516,        // CleaningService (Phase 1)
-  express: 5517,         // ExpressService (Phase 1)
-  key: 5512,             // KeyService (Phase 1)
-  parking: 5525,         // ParkingService (Phase 1)
-  community: 5522,       // CommunityService (Phase 1)
-  renovation: 5521,      // RenovationService (Phase 1)
-  inspection: 5510,      // InspectionService (Phase 1)
-  visitor: 5513,         // VisitorService (Phase 1)
-  contract: 5501,        // ContractService (Phase 1)
-  notification: 5105,   // NotificationService (Phase 1)
-  material: 5504,        // MaterialService (Phase 1)
-  finance: 5509,         // FinanceService (Phase 1)
-  device: 5530,           // DeviceService (Phase 2)
-  payment: 5109,          // PaymentService (Phase 2)
-  mobile: 5526,          // MobileService (Phase 2)
-  statistics: 5250,     // StatisticsService (Phase 1)
-  projectTracking: 5520,  // ProjectTrackingService (Phase 1)
+// nginx 路径路由（/api/xxx 形式）— 前端通过这些路径访问后端服务
+// 格式: 'serviceName': '/api/xxx'
+const NGINX_ROUTES: Record<string, string> = {
+  auth:           '',  // 空字符串 → baseURL 直接用 API_BASE_URL
+  ticket:         '/api/tickets',
+  ticketType:     '/api/ticket-types',
+  person:         '/api/persons',
+  device:         '/api/devices',
+  inspection:     '/api/inspections',
+  complaint:      '/api/complaints',
+  visitor:        '/api/visitors',
+  payment:        '/api/payments',
+  notification:   '/api/notifications',
+  material:       '/api/materials',
+  contract:       '/api/contracts',
+  finance:        '/api/finance',
+  dispatch:       '/api/dispatch',
+  parking:        '/api/parkings',
+  announcement:   '/api/announcements',
+  cleaning:       '/api/cleanings',
+  delivery:       '/api/deliveries',
+  express:        '/api/express',
+  renovation:     '/api/renovations',
+  community:      '/api/community',
+  mobile:         '/api/mobile',
+  key:            '/api/keys',
+  // MasterDataService 通用路由（field-definitions, field-equivalences, areas, buildings 等）
+  masterData:     '/api/master',
 }
+
+// 直连端口服务（未在 nginx 配置，需要直接 IP:port 访问）
+// 这些服务要么端口已对公网开放，要么内网调用
+const DIRECT_PORTS: Record<string, number> = {
+  center:         5016,
+  statistics:     5250,
+  projectTracking: 5520,
+}
+
+// 兼容性别名（支持旧的 port-based 用法）
+export const SERVICES = { ...NGINX_ROUTES, ...DIRECT_PORTS } as Record<string, string | number>
 
 // 获取服务URL
 export const getServiceUrl = (service: keyof typeof SERVICES): string => {
-  if (API_BASE_URL) {
-    return `${API_BASE_URL}:${SERVICES[service]}`
+  const route = NGINX_ROUTES[service]
+  if (route) {
+    // nginx 路由 → /api/xxx（无端口）
+    return API_BASE_URL + route
   }
-  return `http://192.168.1.3:${SERVICES[service]}`
+  // 直连 → IP:port
+  const port = DIRECT_PORTS[service]
+  if (port) {
+    return `${API_BASE_URL}:${port}`
+  }
+  // fallback: 假设是端口号
+  return `${API_BASE_URL}:${SERVICES[service]}`
 }
 
 export default SERVICES
