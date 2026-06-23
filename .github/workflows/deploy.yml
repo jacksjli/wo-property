@@ -65,17 +65,12 @@ jobs:
           echo "📦 Deploying version: $DEPLOY_VERSION"
 
       # ── 通知开始部署 ─────────────────────────────────────
-      - name: 📣 Notify deployment start (DingTalk)
+      - name: 📣 Notify deployment start
         if: env.DINGTALK_WEBHOOK != ''
-        uses: actions-cool/discord-webhook@v1
-        with:
-          webhook-url: ${{ secrets.DINGTALK_WEBHOOK }}
-          message: |
-            🚀 **WO-Property 生产部署开始**
-            - 版本: `${{ steps.version.outputs.version }}`
-            - 服务: `${{ github.event.inputs.service || 'all' }}`
-            - 触发人: @${{ github.actor }}
-            - 时间: ${{ github.event.created_at }}
+        run: |
+          curl -s -X POST "${{ secrets.DINGTALK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"🚀 WO-Property 生产部署开始\n- 版本: ${{ steps.version.outputs.version }}\n- 服务: ${{ github.event.inputs.service || 'all' }}\n- 触发人: ${{ github.actor }}\"}}"
 
       # ── 远程服务器拉取并启动 ──────────────────────────────
       - name: 🚀 Deploy to production server via SSH
@@ -84,8 +79,9 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          port: ${{ secrets.PROD_SERVER_PORT || 22 }}
-          envs:
+          port: ${{ secrets.PROD_SERVER_PORT }}
+          envs: DEPLOY_VERSION,REGISTRY,IMAGE_PREFIX
+          environment:
             DEPLOY_VERSION: ${{ steps.version.outputs.version }}
             REGISTRY: ${{ env.REGISTRY }}
             IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
@@ -143,7 +139,6 @@ jobs:
           for i in $(seq 1 $MAX_RETRIES); do
             echo "🔍 Health check attempt $i/$MAX_RETRIES..."
 
-            # 前端健康检查
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${PROD_HOST}:${PROD_PORT}/ || echo "000")
             if [[ "$HTTP_CODE" == "200" ]]; then
               echo "✅ 前端健康检查通过 (HTTP $HTTP_CODE)"
@@ -153,7 +148,6 @@ jobs:
               continue
             fi
 
-            # 后端网关健康检查
             GATEWAY_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://${PROD_HOST}:${PROD_PORT}/api/health || echo "000")
             if [[ "$GATEWAY_CODE" == "200" ]]; then
               echo "✅ 网关健康检查通过 (HTTP $GATEWAY_CODE)"
@@ -178,12 +172,11 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          port: ${{ secrets.PROD_SERVER_PORT || 22 }}
+          port: ${{ secrets.PROD_SERVER_PORT }}
           script: |
             set -e
             echo "⚠️ 回滚到上一个稳定版本..."
             cd /opt/wo-property
-            # 找到最新的备份
             BACKUP=$(ls -t docker-compose.yml.backup.* 2>/dev/null | head -1)
             if [[ -n "$BACKUP" ]]; then
               echo "📦 从 $BACKUP 恢复..."
@@ -196,17 +189,19 @@ jobs:
 
       # ── 通知部署结果 ────────────────────────────────────
       - name: 📣 Notify deployment result
-        if: always()
-        uses: actions-cool/discord-webhook@v1
-        with:
-          webhook-url: ${{ secrets.DINGTALK_WEBHOOK }}
-          message: |
-            ${{ job.status == 'success' && '✅' || '❌' }} **WO-Property 生产部署${{ job.status == 'success' && '成功' || '失败' }}**
-            - 版本: `${{ steps.version.outputs.version }}`
-            - 服务: `${{ github.event.inputs.service || 'all' }}`
-            - 触发人: @${{ github.actor }}
-            - 结果: ${{ job.status }}
-            ${{ job.status != 'success' && '- 回滚已触发，请检查服务器状态' || '' }}
+        if: always() && env.DINGTALK_WEBHOOK != ''
+        run: |
+          STATUS="${{ job.status }}"
+          if [[ "$STATUS" == "success" ]]; then
+            EMOJI="✅"
+            TEXT="成功"
+          else
+            EMOJI="❌"
+            TEXT="失败"
+          fi
+          curl -s -X POST "${{ secrets.DINGTALK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"${EMOJI} WO-Property 生产部署${TEXT}\n- 版本: ${{ steps.version.outputs.version }}\n- 服务: ${{ github.event.inputs.service || 'all' }}\n- 触发人: ${{ github.actor }}\n- 结果: ${STATUS}\"}}"
 
       - name: Create deployment record
         if: always()
@@ -216,4 +211,3 @@ jobs:
           echo "  - Status: ${{ job.status }}"
           echo "  - Actor: ${{ github.actor }}"
           echo "  - Run: ${{ github.run_id }}"
-          # 可扩展：写入 JSON 文件或调用外部 API 记录
